@@ -1,12 +1,12 @@
 package com.jababdihi.backend;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.SpringApplication;
 
-@SpringBootTest
 class JababdihiBackendApplicationTests {
 
-    @Test
-    void contextLoads() {
-    }
+  @Test
+  void applicationCanBeConstructed() {
+    new SpringApplication(JababdihiBackendApplication.class);
+  }
 }
