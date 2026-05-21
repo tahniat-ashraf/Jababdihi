@@ -59,7 +59,7 @@ jababdihi/
 
 ## Backend Rules
 
-- Use Java 21 and Spring Boot 3.
+- Use Java 25 and Spring Boot 3.
 - Use one backend codebase with separate runtime processes/profiles:
   - `api`: public API and admin/internal API.
   - `worker`: ingestion, AI processing, deduplication, scheduled jobs.

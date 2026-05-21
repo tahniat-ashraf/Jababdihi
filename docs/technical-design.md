@@ -533,7 +533,7 @@ incident-monitor/
 
 ### 10.2 Backend
 
-- Java 21.
+- Java 25.
 - Spring Boot 3.
 - Spring Security.
 - Spring AI integration where useful.

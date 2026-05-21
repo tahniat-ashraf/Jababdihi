@@ -2,10 +2,10 @@
 
 Backend workspace for Jababdihi.
 
-## Planned Stack
+## Stack
 
-- Java 21
-- Spring Boot 3
+- Java 25
+- Spring Boot 3.5
 - Spring Security
 - Spring AI integration where useful
 - PostgreSQL with pgvector
@@ -30,16 +30,40 @@ The backend will use one codebase with separate runtime processes/profiles:
 - RSS-first ingestion with direct scraping fallback per allowlisted publisher.
 - AI-assisted extraction, summarization, translation, and deduplication through private services only.
 
+## Spring Profiles
+
+- `api`: public API and admin/internal API.
+- `worker`: ingestion, AI processing, deduplication, scheduled jobs.
+
+The `api` profile is the default local profile.
+
 ## Local Setup
 
-No Spring Boot project has been generated yet.
-
-When the backend skeleton is added, document the exact build and run commands here. Expected commands will likely include:
+Run tests:
 
 ```bash
-./mvnw test
-./mvnw package
+mvn test
 ```
+
+Run the API profile locally:
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=api
+```
+
+The health endpoint is available at:
+
+```text
+GET /actuator/health
+```
+
+Build the application:
+
+```bash
+mvn package
+```
+
+Database, Redis, Flyway, and Quartz dependencies are present but their runtime auto-configuration is disabled until local infrastructure configuration is added.
 
 ## Boundaries
 
