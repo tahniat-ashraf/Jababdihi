@@ -1,0 +1,7 @@
+# Local environment files may contain secrets.
+.env
+.env.*
+!.env.example
+
+# Compose override files are machine-local by default.
+docker-compose.override.yml

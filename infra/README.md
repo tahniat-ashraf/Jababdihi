@@ -25,13 +25,46 @@ Infrastructure workspace for Jababdihi.
 
 ## Local Setup
 
-No Docker Compose files or deployment scripts have been added yet.
-
-When infrastructure files are added, document the exact validation command here. Expected commands will likely include:
+Copy the example environment file before starting local services:
 
 ```bash
-docker compose config
+cp infra/.env.example infra/.env.local
 ```
+
+Validate the local Compose file:
+
+```bash
+docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml config
+```
+
+Start PostgreSQL, Redis, backend API, and backend worker:
+
+```bash
+docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml up postgres redis backend-api backend-worker
+```
+
+Start the optional frontend service:
+
+```bash
+docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml --profile frontend up frontend
+```
+
+Start the optional Ollama placeholder service:
+
+```bash
+docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml --profile ollama up ollama
+```
+
+Ollama is present only as a local placeholder. No AI processing is wired to it yet.
+
+## Local Services
+
+- `postgres`: PostgreSQL for local development.
+- `redis`: Redis for local caching/rate-limit development.
+- `backend-api`: Spring Boot API process with the `api` profile.
+- `backend-worker`: Spring Boot worker process with the `worker` profile.
+- `frontend`: optional Next.js development server.
+- `ollama`: optional local AI runtime placeholder, disabled unless the `ollama` profile is used.
 
 ## Boundaries
 

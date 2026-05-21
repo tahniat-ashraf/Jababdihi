@@ -1,0 +1,117 @@
+name: jababdihi-local
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: jababdihi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-jababdihi}
+      POSTGRES_USER: ${POSTGRES_USER:-jababdihi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jababdihi_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-jababdihi} -d ${POSTGRES_DB:-jababdihi}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: jababdihi-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend-api:
+    image: maven:3.9-eclipse-temurin-25
+    container_name: jababdihi-backend-api
+    working_dir: /workspace/backend
+    command: mvn spring-boot:run -Dspring-boot.run.profiles=api
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-jababdihi}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-jababdihi}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-jababdihi_dev_password}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_PROFILES_ACTIVE: api
+    ports:
+      - "${BACKEND_API_PORT:-8080}:8080"
+    volumes:
+      - ../backend:/workspace/backend
+      - maven-cache:/root/.m2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  backend-worker:
+    image: maven:3.9-eclipse-temurin-25
+    container_name: jababdihi-backend-worker
+    working_dir: /workspace/backend
+    command: mvn spring-boot:run -Dspring-boot.run.profiles=worker
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-jababdihi}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-jababdihi}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-jababdihi_dev_password}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_PROFILES_ACTIVE: worker
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      - ../backend:/workspace/backend
+      - maven-cache:/root/.m2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    image: node:24-bookworm-slim
+    container_name: jababdihi-frontend
+    profiles: ["frontend"]
+    working_dir: /workspace/frontend
+    command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ../frontend:/workspace/frontend
+      - frontend-node-modules:/workspace/frontend/node_modules
+    depends_on:
+      - backend-api
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: jababdihi-ollama
+    profiles: ["ollama"]
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
+volumes:
+  postgres-data:
+  redis-data:
+  maven-cache:
+  frontend-node-modules:
+  ollama-data:
