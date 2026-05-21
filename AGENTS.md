@@ -73,6 +73,8 @@ jababdihi/
 - Use Quartz Scheduler with PostgreSQL-backed job state.
 - Use Flyway versioned SQL migrations.
 - Use forward-fix migration policy; do not rely on destructive rollbacks.
+- Backend Java code must follow the Google Java Style Guide.
+- Use the backend Maven Spotless configuration to apply and check Google Java Format.
 - Add service-level tests where practical.
 
 ## Data and Publishing Rules
@@ -150,6 +152,7 @@ npm run build
 ```bash
 ./mvnw test
 ./mvnw package
+./mvnw spotless:check
 ```
 
 ### Infra

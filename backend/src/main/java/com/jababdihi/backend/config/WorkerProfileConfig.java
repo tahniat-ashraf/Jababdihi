@@ -5,5 +5,4 @@ import org.springframework.context.annotation.Profile;
 
 @Configuration
 @Profile("worker")
-class WorkerProfileConfig {
-}
+class WorkerProfileConfig {}
