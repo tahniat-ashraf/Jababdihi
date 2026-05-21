@@ -7,12 +7,27 @@ import { cn } from "@/lib/utils";
 
 type ActorRole = "GOVERNMENT" | "OPPOSITION";
 
-const actorOptions: Array<{ label: string; value: ActorRole }> = [
-  { label: "Government", value: "GOVERNMENT" },
-  { label: "Opposition", value: "OPPOSITION" }
-];
+type LanguageCode = "bn" | "en";
 
-const languageOptions = [
+const actorOptions: Record<
+  LanguageCode,
+  Array<{ label: string; value: ActorRole }>
+> = {
+  bn: [
+    { label: "সরকার", value: "GOVERNMENT" },
+    { label: "বিরোধী দল", value: "OPPOSITION" }
+  ],
+  en: [
+    { label: "Government", value: "GOVERNMENT" },
+    { label: "Opposition", value: "OPPOSITION" }
+  ]
+};
+
+const languageOptions: Array<{
+  label: string;
+  href: `/${LanguageCode}`;
+  code: LanguageCode;
+}> = [
   { label: "বাংলা", href: "/bn", code: "bn" },
   { label: "English", href: "/en", code: "en" }
 ];
@@ -20,6 +35,7 @@ const languageOptions = [
 export function TopNavigation() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const language: LanguageCode = pathname?.startsWith("/en") ? "en" : "bn";
   const currentActor =
     searchParams.get("actorRole") === "OPPOSITION"
       ? "OPPOSITION"
@@ -30,6 +46,13 @@ export function TopNavigation() {
     params.set("actorRole", actorRole);
 
     return `${pathname || "/bn"}?${params.toString()}`;
+  }
+
+  function hrefForLanguage(href: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("actorRole", currentActor);
+
+    return `${href}?${params.toString()}`;
   }
 
   return (
@@ -52,7 +75,7 @@ export function TopNavigation() {
             aria-label="Actor role"
             className="inline-flex w-full rounded-md border bg-muted p-1 sm:w-auto"
           >
-            {actorOptions.map((option) => (
+            {actorOptions[language].map((option) => (
               <Button
                 asChild
                 key={option.value}
@@ -88,7 +111,7 @@ export function TopNavigation() {
                   variant={active ? "secondary" : "ghost"}
                   className="flex-1 sm:flex-none"
                 >
-                  <Link href={option.href}>{option.label}</Link>
+                  <Link href={hrefForLanguage(option.href)}>{option.label}</Link>
                 </Button>
               );
             })}

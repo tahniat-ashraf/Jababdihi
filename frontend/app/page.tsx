@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function HomePage() {
-  redirect("/bn");
+  redirect("/bn?actorRole=GOVERNMENT");
 }
