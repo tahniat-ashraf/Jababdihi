@@ -37,11 +37,6 @@ const wordmarkSubtitleByLang: Record<LanguageCode, string> = {
   en: "Public · evidence-first"
 };
 
-const adminLabel: Record<LanguageCode, string> = {
-  bn: "অ্যাডমিন",
-  en: "Admin"
-};
-
 export function TopNavigation() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -115,12 +110,7 @@ export function TopNavigation() {
             >
               {UI_COPY[language].methodology}
             </Link>
-            <Link
-              href="/admin"
-              className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {adminLabel[language]}
-            </Link>
+
           </nav>
         </div>
 
