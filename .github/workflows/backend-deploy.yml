@@ -30,10 +30,34 @@ env:
   BACKEND_IMAGE_BASE: ghcr.io/tahniat-ashraf/jababdihi-backend
 
 jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Spotless
+        run: mvn -f backend/pom.xml spotless:check
+
+      - name: Test
+        run: mvn -f backend/pom.xml test
+
+      - name: Package
+        run: mvn -f backend/pom.xml package -DskipTests
+
   build-image:
     name: Build backend image
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: test
     outputs:
       image: ${{ steps.image.outputs.image }}
     steps:
@@ -117,12 +141,26 @@ jobs:
           ./scripts/deploy-backend.sh staging "${{ needs.build-image.outputs.image }}"
           SSH
 
-  production-migrations:
-    name: Approve and run production migrations
+      - name: Verify staging health
+        run: |
+          echo "Checking staging health..."
+          for i in $(seq 1 12); do
+            if curl -fsS "http://${{ secrets.STAGING_VPS_HOST }}:8081/actuator/health" 2>/dev/null | grep -q '"UP"'; then
+              echo "Staging is healthy."
+              exit 0
+            fi
+            echo "  attempt $i/12 — retrying in 5s"
+            sleep 5
+          done
+          echo "ERROR: Staging health check failed after 60s." >&2
+          exit 1
+
+  deploy-production:
+    name: Deploy production
     runs-on: ubuntu-latest
     needs: build-image
     if: github.ref_name == 'main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
-    environment: production-migrations
+    environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -140,36 +178,16 @@ jobs:
           rsync -az --delete --exclude='.env*' -e "ssh -p ${{ secrets.PROD_VPS_PORT || 22 }}" \
             infra/ "${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_HOST }}:${{ secrets.PROD_DEPLOY_PATH }}/"
 
-      - name: Run production migrations
-        run: |
-          ssh -p "${{ secrets.PROD_VPS_PORT || 22 }}" "${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_HOST }}" <<'SSH'
-          set -eu
-          cd "${{ secrets.PROD_DEPLOY_PATH }}"
-          echo "${{ secrets.GHCR_TOKEN || github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          export BACKEND_IMAGE="${{ needs.build-image.outputs.image }}"
-          ./scripts/run-migrations.sh prod
-          SSH
-
-  deploy-production:
-    name: Deploy production
-    runs-on: ubuntu-latest
-    needs: [build-image, production-migrations]
-    if: github.ref_name == 'main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
-    environment: production
-    steps:
-      - name: Install SSH key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.PROD_VPS_SSH_KEY }}
-
-      - name: Trust VPS host
-        run: ssh-keyscan -p "${{ secrets.PROD_VPS_PORT || 22 }}" "${{ secrets.PROD_VPS_HOST }}" >> ~/.ssh/known_hosts
-
       - name: Deploy production
+        timeout-minutes: 20
         run: |
-          ssh -p "${{ secrets.PROD_VPS_PORT || 22 }}" "${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_HOST }}" <<'SSH'
+          ssh -p "${{ secrets.PROD_VPS_PORT || 22 }}" -o ServerAliveInterval=30 -o ServerAliveCountMax=40 "${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_HOST }}" <<'SSH'
           set -eu
           cd "${{ secrets.PROD_DEPLOY_PATH }}"
           echo "${{ secrets.GHCR_TOKEN || github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          ./scripts/deploy-backend.sh prod "${{ needs.build-image.outputs.image }}"
+          BACKEND_IMAGE="${{ needs.build-image.outputs.image }}"
+          IMAGE_TAG="${BACKEND_IMAGE##*:}"
+          sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${BACKEND_IMAGE}|" .env.prod
+          docker pull "$BACKEND_IMAGE"
+          ./scripts/deploy-prod.sh "$IMAGE_TAG"
           SSH
