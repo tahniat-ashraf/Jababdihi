@@ -106,7 +106,12 @@ jobs:
           export BACKEND_IMAGE="${{ needs.build-image.outputs.image }}"
           docker pull "$BACKEND_IMAGE"
           docker compose --env-file .env -f docker-compose.base.yml -f docker-compose.staging.yml up -d postgres
-          docker compose --env-file .env -f docker-compose.base.yml -f docker-compose.staging.yml wait postgres || true
+          echo "Waiting for postgres to be ready..."
+          for i in $(seq 1 30); do
+            docker compose --env-file .env -f docker-compose.base.yml -f docker-compose.staging.yml exec -T postgres pg_isready && break
+            echo "  attempt $i/30 — retrying in 2s"
+            sleep 2
+          done
           ./scripts/run-migrations.sh staging
           ./scripts/deploy-backend.sh staging "${{ needs.build-image.outputs.image }}"
           SSH
