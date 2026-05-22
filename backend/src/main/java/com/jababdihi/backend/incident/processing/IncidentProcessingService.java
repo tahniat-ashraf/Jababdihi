@@ -31,7 +31,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class IncidentProcessingService {
   private static final String RAW_STATUS_PENDING = "PENDING";
   private static final String RAW_STATUS_PROCESSED = "PROCESSED";
-  private static final BigDecimal AUTO_PUBLISH_EXTRACTION_THRESHOLD = BigDecimal.valueOf(0.75);
 
   private final RawContentRepository rawContentRepository;
   private final IncidentRepository incidentRepository;
@@ -116,7 +115,7 @@ public class IncidentProcessingService {
     incident.setIncidentDate(candidate.incidentDate());
     incident.setExtractedLocationText(candidate.locationExtraction().extractedText());
     incident.setLocation(createLocation(candidate.locationExtraction()));
-    incident.setStatus(IncidentStatus.PENDING_REVIEW);
+    incident.setStatus(IncidentStatus.AI_EXTRACTED);
     Instant now = Instant.now(clock);
     incident.setCreatedAt(now);
     incident.setUpdatedAt(now);
@@ -200,12 +199,7 @@ public class IncidentProcessingService {
     incident.setConfidenceScore(confidenceScore);
     incident.setConfidenceLevel(confidenceScoringService.confidenceLevel(confidenceScore));
     incident.setUpdatedAt(Instant.now(clock));
-    if (shouldAutoPublish(incident, candidate)) {
-      incident.setStatus(IncidentStatus.AUTO_PUBLISHED);
-    } else if (incident.getStatus() != IncidentStatus.AUTO_PUBLISHED
-        && incident.getStatus() != IncidentStatus.MANUALLY_PUBLISHED) {
-      incident.setStatus(IncidentStatus.PENDING_REVIEW);
-    }
+    incident.setStatus(IncidentStatus.AUTO_PUBLISHED);
   }
 
   private int independentPublisherCount(Incident incident) {
@@ -214,14 +208,6 @@ public class IncidentProcessingService {
             .map(source -> source.getPublisher().getDomain())
             .collect(Collectors.toSet());
     return publisherDomains.size();
-  }
-
-  private boolean shouldAutoPublish(Incident incident, IncidentCandidate candidate) {
-    return incident.getSourceCount() >= 2
-        && incident.getIndependentPublisherCount() >= 2
-        && candidate.extractionConfidence().compareTo(AUTO_PUBLISH_EXTRACTION_THRESHOLD) >= 0
-        && candidate.politicalAccountabilityLink()
-        && candidate.actorRole() != ActorRole.UNKNOWN;
   }
 
   private void applyExtractionMetadata(RawContent rawContent, IncidentCandidate candidate) {

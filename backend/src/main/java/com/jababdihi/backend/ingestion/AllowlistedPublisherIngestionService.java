@@ -4,8 +4,11 @@ import com.jababdihi.backend.observability.OperationalMetricsService;
 import com.jababdihi.backend.source.Publisher;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -90,6 +93,55 @@ public class AllowlistedPublisherIngestionService {
     return new IngestionResult(fetchedItems, storedItems, skippedItems);
   }
 
+  @Transactional
+  public CurrentPublisherIngestionResult ingestCurrentPublisher(
+      Publisher publisher,
+      IngestionProperties.PublisherFeedProperties publisherConfig,
+      Instant cursorPublishedAt,
+      int itemLimit,
+      Instant deadline) {
+    int fetchedItems = 0;
+    int attemptedItems = 0;
+    int storedItems = 0;
+    int skippedItems = 0;
+    Optional<Instant> latestCursor = Optional.of(cursorPublishedAt);
+    List<UUID> rawContentIds = new ArrayList<>();
+
+    for (FeedItem item : currentItems(publisherConfig, cursorPublishedAt)) {
+      if ((itemLimit >= 0 && attemptedItems >= itemLimit)
+          || !Instant.now(clock).isBefore(deadline)) {
+        break;
+      }
+      fetchedItems++;
+
+      ArticleContent content = resolveArticleContentForCurrent(publisherConfig, item);
+      if (content.publishedAt().isEmpty()
+          || !content.publishedAt().get().isAfter(cursorPublishedAt)) {
+        skippedItems++;
+        metricsService.recordCrawlerFetch(publisherConfig.getName(), "skipped");
+        continue;
+      }
+
+      attemptedItems++;
+      latestCursor = max(latestCursor, content.publishedAt().get());
+      metricsService.recordCrawlerFetch(publisherConfig.getName(), "fetched");
+      Optional<RawContent> rawContent = createRawContent(publisher, publisherConfig, item, content);
+      if (rawContent.isEmpty()) {
+        skippedItems++;
+        metricsService.recordCrawlerFetch(publisherConfig.getName(), "skipped");
+        continue;
+      }
+
+      RawContent saved = rawContentRepository.save(rawContent.get());
+      rawContentIds.add(saved.getId());
+      storedItems++;
+      metricsService.recordCrawlerFetch(publisherConfig.getName(), "stored");
+    }
+
+    return new CurrentPublisherIngestionResult(
+        fetchedItems, attemptedItems, storedItems, skippedItems, latestCursor, rawContentIds);
+  }
+
   private List<FeedItem> fetchFeedItems(IngestionProperties.PublisherFeedProperties publisher) {
     try {
       return feedClient.fetch(publisher);
@@ -111,6 +163,21 @@ public class AllowlistedPublisherIngestionService {
     }
 
     ArticleContent content = resolveArticleContent(canonicalUrl.get(), publisherConfig, item);
+    return createRawContent(publisher, publisherConfig, item, content);
+  }
+
+  private Optional<RawContent> createRawContent(
+      Publisher publisher,
+      IngestionProperties.PublisherFeedProperties publisherConfig,
+      FeedItem item,
+      ArticleContent content) {
+    Optional<String> canonicalUrl =
+        canonicalUrlNormalizer.normalize(item.sourceUrl(), publisherConfig.getDomain());
+    if (canonicalUrl.isEmpty()
+        || rawContentRepository.existsByPublisherAndCanonicalUrl(publisher, canonicalUrl.get())) {
+      return Optional.empty();
+    }
+
     if (content.extractedText().isBlank()) {
       return Optional.empty();
     }
@@ -136,6 +203,26 @@ public class AllowlistedPublisherIngestionService {
     return Optional.of(rawContent);
   }
 
+  private List<FeedItem> currentItems(
+      IngestionProperties.PublisherFeedProperties publisherConfig, Instant cursorPublishedAt) {
+    return fetchFeedItems(publisherConfig).stream()
+        .filter(
+            item ->
+                item.publishedAt().isEmpty() || item.publishedAt().get().isAfter(cursorPublishedAt))
+        .sorted(Comparator.comparing(item -> item.publishedAt().orElse(Instant.MAX)))
+        .toList();
+  }
+
+  private ArticleContent resolveArticleContentForCurrent(
+      IngestionProperties.PublisherFeedProperties publisherConfig, FeedItem item) {
+    Optional<String> canonicalUrl =
+        canonicalUrlNormalizer.normalize(item.sourceUrl(), publisherConfig.getDomain());
+    if (canonicalUrl.isEmpty()) {
+      return new ArticleContent(item.title(), item.publishedAt(), "");
+    }
+    return resolveArticleContent(canonicalUrl.get(), publisherConfig, item);
+  }
+
   private ArticleContent resolveArticleContent(
       String canonicalUrl,
       IngestionProperties.PublisherFeedProperties publisherConfig,
@@ -158,4 +245,11 @@ public class AllowlistedPublisherIngestionService {
 
   private record ArticleContent(
       String title, Optional<Instant> publishedAt, String extractedText) {}
+
+  private Optional<Instant> max(Optional<Instant> current, Instant candidate) {
+    if (current.isEmpty() || candidate.isAfter(current.get())) {
+      return Optional.of(candidate);
+    }
+    return current;
+  }
 }

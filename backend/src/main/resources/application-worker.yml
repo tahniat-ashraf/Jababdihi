@@ -17,6 +17,7 @@ spring:
 
 app:
   ingestion:
+    item-limit: ${INGESTION_ITEM_LIMIT:-1}
     publishers:
       - name: Prothom Alo
         domain: prothomalo.com

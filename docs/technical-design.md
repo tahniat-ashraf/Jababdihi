@@ -32,8 +32,7 @@ Core principle:
 - AI-assisted ingestion from allowlisted newspapers and official sources.
 - Source clustering/deduplication.
 - Confidence score based on corroboration.
-- Auto-publish only high-confidence incidents.
-- Minimal internal admin UI for pending review.
+- Auto-publish extracted incidents for MVP.
 - Staging and production environments with deployment parity.
 - CI/CD feedback loop for AI-assisted development.
 
@@ -467,10 +466,9 @@ flowchart TD
     API --> Redis[(Redis)]
     API --> PG[(PostgreSQL + pgvector)]
 
-    Admin[Next.js Admin UI /admin] --> API
-
     Quartz[Quartz Scheduler] --> Worker[Spring Boot Worker - VPS]
     Worker --> TaskQueue[(PostgreSQL processing_tasks)]
+    Worker --> Cursors[(PostgreSQL ingestion_cursors)]
     Worker --> PG
     Worker --> Redis
     Worker --> Ollama[Ollama Local AI Runtime]
@@ -486,6 +484,7 @@ flowchart TD
         Ollama
         Embed
         TaskQueue
+        Cursors
     end
 ```
 
@@ -496,7 +495,7 @@ Same codebase, separate runtime processes:
 ```yaml
 processes:
   api:
-    role: public_api_and_admin_api
+    role: public_api_and_private_operations_api
   worker:
     role: ingestion_ai_deduplication_jobs
   sameCodebase: true
@@ -637,32 +636,63 @@ crawlerDeduplication:
 
 ### 11.4 Scheduled Ingestion
 
-Daily ingestion:
+Current ingestion:
 
 ```yaml
-dailyIngestion:
-  schedule: "02:00 Asia/Dhaka"
-  window: rolling_3_days
+currentIngestion:
+  schedule: hourly
+  discovery: RSS
+  articleText: DIRECT_SCRAPE
+  cursorTable: ingestion_cursors
+  cursorScope: publisher
+  cursorField: last_current_published_at
+  ordering: oldest_to_newest
+  itemLimitEnv: INGESTION_ITEM_LIMIT
+  stagingItemLimit: 10
+  productionItemLimit: -1
+  maxRuntime: 1_hour
   dedupeExistingRawContent: true
   dedupeExistingIncidents: true
 ```
+
+Current ingestion fetches RSS items per allowlisted publisher and only directly
+scrapes article pages to extract article text. It does not crawl publisher
+archives in the hourly path. The worker advances each publisher cursor only
+after an item is processed, so a capped or interrupted run resumes at the next
+unprocessed RSS item on the following hourly run.
 
 Backfill:
 
 ```yaml
 backfill:
   startDate: "2026-02-17"
-  batchUnit: DAY
-  schedule: hourly
-  daysPerRun: 1
+  schedule: every_2_hours
+  cursorTable: ingestion_cursors
+  cursorScope: publisher
+  cursorField: next_backfill_published_at
+  ordering: oldest_to_newest
+  itemLimitEnv: INGESTION_ITEM_LIMIT
+  stagingItemLimit: 10
+  productionItemLimit: -1
+  maxRuntime: 1_hour
   resumable: true
-  checkpointTable: ingestion_job_runs
   retryFailedDays: true
-  stopCondition: reaches_current_rolling_window
+  stopCondition: reaches_earliest_current_ingestion_cursor_for_publisher
   afterCatchup: idle
   canResumeIfStartDateChanges: true
   canReprocessFailedDays: true
 ```
+
+`INGESTION_ITEM_LIMIT` is per run and counts every attempted item, including
+items that are parsed but do not become incidents. Staging uses a low limit to
+validate the pipeline without spending time searching quiet news windows. Prod
+uses `-1` for no item cap, while still enforcing max runtime and cursor locks.
+
+Current ingestion and backfill may run on the same schedule cluster, but work is
+locked per `job_type + publisher_id`. If the previous run still owns a cursor
+when the next Quartz trigger fires, the new trigger skips that locked publisher
+instead of spawning duplicate crawler work. Stale locks expire after the worker
+runtime guard window.
 
 ### 11.5 Processing Pipeline
 
@@ -676,9 +706,9 @@ sequenceDiagram
     participant Emb as Embedding Model
     participant Corr as Correlation Engine
     participant DB as Incident DB
-    participant Admin as Admin UI
 
     Quartz->>Worker: Trigger crawl/backfill task
+    Worker->>DB: Claim publisher cursor
     Worker->>Source: Fetch RSS/article
     Worker->>Raw: Store extracted text + metadata
     Worker->>LLM: Extract incident JSON + summaries
@@ -688,7 +718,8 @@ sequenceDiagram
     Worker->>Corr: Find matching incidents
     Corr->>DB: Create/merge incident source
     Corr->>DB: Recompute confidence
-    DB-->>Admin: Pending review items if needed
+    Corr->>DB: Auto-publish extracted incident
+    Worker->>DB: Advance publisher cursor
 ```
 
 ### 11.6 PostgreSQL Task Queue
@@ -706,7 +737,8 @@ Task types:
 
 ```yaml
 taskTypes:
-  - CRAWL_SOURCE_DAY
+  - CRAWL_CURRENT_PUBLISHER
+  - CRAWL_BACKFILL_PUBLISHER
   - EXTRACT_INCIDENT
   - GENERATE_EMBEDDING
   - CORRELATE_INCIDENT
@@ -724,7 +756,7 @@ taskFailurePolicy:
     initialDelayMinutes: 5
     maxDelayHours: 6
   finalStatus: FAILED_PERMANENTLY
-  adminCanRetry: true
+  adminCanRetry: false
 ```
 
 ---
@@ -779,8 +811,8 @@ Thresholds:
 ```yaml
 dedupePolicy:
   autoMergeThreshold: 0.86
-  manualReviewThreshold: 0.72
-  belowManualReviewThreshold: create_new_incident
+  possibleDuplicateThreshold: 0.72
+  belowPossibleDuplicateThreshold: create_new_incident
 ```
 
 ```text
@@ -788,7 +820,7 @@ similarity >= 0.86
   -> automatically attach source to existing incident
 
 0.72 <= similarity < 0.86
-  -> possible duplicate; send to pending review
+  -> possible duplicate; create separate incident for MVP and retain similarity metadata internally
 
 similarity < 0.72
   -> create new incident
@@ -836,18 +868,20 @@ metadataConsistencyScore:
 
 ### 13.3 Publishing Criteria
 
-Auto-publish only if:
+For MVP, every extracted incident is auto-published:
 
 ```yaml
-autoPublishCriteria:
-  minSourceCount: 2
-  minIndependentPublisherCount: 2
-  minExtractionConfidence: 0.75
-  politicalAccountabilityLinkRequired: true
-  actorRoleMustNotBeUnknown: true
+publishingPolicy:
+  extractedIncidents: AUTO_PUBLISHED
+  lowConfidenceIncidents: AUTO_PUBLISHED
+  unknownActorIncidents: internal_only
+  nonIncidentItems: raw_content_only
+  manualReview: not_in_mvp
 ```
 
-Otherwise, incident remains `PENDING_REVIEW`.
+Confidence remains visible as source-corroboration strength, not legal proof.
+Unknown actor items are retained internally and excluded from the public feed.
+Items that do not produce an extracted incident remain raw/internal audit data.
 
 ---
 
@@ -857,9 +891,7 @@ Otherwise, incident remains `PENDING_REVIEW`.
 incidentStatuses:
   - RAW_CAPTURED
   - AI_EXTRACTED
-  - PENDING_REVIEW
   - AUTO_PUBLISHED
-  - MANUALLY_PUBLISHED
   - REJECTED
   - ARCHIVED
 ```
@@ -868,9 +900,7 @@ Meanings:
 
 - `RAW_CAPTURED`: source fetched but not processed.
 - `AI_EXTRACTED`: AI found a candidate incident.
-- `PENDING_REVIEW`: not enough confidence to publish automatically.
-- `AUTO_PUBLISHED`: meets auto-publish criteria.
-- `MANUALLY_PUBLISHED`: human approved.
+- `AUTO_PUBLISHED`: extracted incident is public when actor role is publishable.
 - `REJECTED`: irrelevant, incorrect, unsafe, or outside scope.
 - `ARCHIVED`: removed from active feed but retained for audit/history.
 
@@ -937,6 +967,7 @@ create table raw_contents (
   source_url text not null,
   canonical_url text not null,
   source_title text,
+  published_at timestamptz,
   extracted_text text,
   relevant_excerpt text,
   content_hash text not null,
@@ -1001,6 +1032,21 @@ create table ingestion_job_runs (
   finished_at timestamptz,
   error_message text,
   created_at timestamptz not null
+);
+
+create table ingestion_cursors (
+  id uuid primary key,
+  job_type text not null,
+  publisher_id uuid references publishers(id),
+  cursor_published_at timestamptz,
+  locked_by text,
+  locked_at timestamptz,
+  heartbeat_at timestamptz,
+  last_run_status text,
+  last_error text,
+  created_at timestamptz not null,
+  updated_at timestamptz not null,
+  unique (job_type, publisher_id)
 );
 ```
 
@@ -1130,118 +1176,18 @@ Response:
 }
 ```
 
-### 16.4 Admin Pending Incidents API
+### 16.4 Internal Operations APIs
 
-```http
-GET /internal/admin/incidents/pending?page=1&pageSize=20
-Authorization: Basic ...
-```
-
-Response:
-
-```json
-{
-  "items": [
-    {
-      "id": "b7c2a3b8-80db-4e94-a7be-f3e55d4bc2de",
-      "status": "PENDING_REVIEW",
-      "actorRole": "UNKNOWN",
-      "candidateTitle": "AI extracted candidate title",
-      "candidateSummary": "AI extracted candidate summary",
-      "sourceCount": 1,
-      "independentPublisherCount": 1,
-      "extractionConfidence": 0.68,
-      "possibleDuplicateIncidentId": null,
-      "createdAt": "2026-03-05T12:00:00Z"
-    }
-  ],
-  "page": 1,
-  "pageSize": 20,
-  "totalPages": 2,
-  "totalItems": 25
-}
-```
-
-### 16.5 Admin Publish API
-
-```http
-POST /internal/admin/incidents/b7c2a3b8-80db-4e94-a7be-f3e55d4bc2de/publish
-Authorization: Basic ...
-```
-
-Request:
-
-```json
-{
-  "note": "Reviewed source evidence and actor attribution."
-}
-```
-
-Response:
-
-```json
-{
-  "id": "b7c2a3b8-80db-4e94-a7be-f3e55d4bc2de",
-  "status": "MANUALLY_PUBLISHED"
-}
-```
-
-### 16.6 Admin Reject API
-
-```http
-POST /internal/admin/incidents/b7c2a3b8-80db-4e94-a7be-f3e55d4bc2de/reject
-Authorization: Basic ...
-```
-
-Request:
-
-```json
-{
-  "reason": "No clear political accountability link."
-}
-```
-
-Response:
-
-```json
-{
-  "id": "b7c2a3b8-80db-4e94-a7be-f3e55d4bc2de",
-  "status": "REJECTED"
-}
-```
+No admin review or approval API is required for MVP. Internal APIs may be added
+only for operational health, metrics, and safe manual job triggering if needed.
 
 ---
 
 ## 17. Admin UI
 
-The admin UI lives inside the Next.js frontend under `/admin` and calls Spring Boot internal admin APIs.
-
-Capabilities:
-
-```yaml
-adminCapabilities:
-  - list_pending_incidents
-  - view_incident_detail
-  - view_source_evidence
-  - publish_incident
-  - reject_incident
-  - archive_incident
-  - reprocess_incident
-```
-
-Security:
-
-```yaml
-adminSecurity:
-  auth: BASIC_AUTH
-  username: env.ADMIN_USERNAME
-  passwordHash: env.ADMIN_PASSWORD_HASH
-  externalPath: /admin
-  extraProtection:
-    - HTTPS only
-    - Cloudflare access rule if available
-    - NGINX rate limiting
-```
+Admin review, approval, reject, archive, reprocess, and pending incident UI are
+not in MVP. The public product relies on automatic extraction, deduplication,
+confidence scoring, and transparent source evidence.
 
 Machine-to-machine internal APIs use API-key authentication.
 
@@ -1438,14 +1384,13 @@ infra/
 
 ```yaml
 stagingJobs:
-  crawlerSchedule: disabled
-  backfillSchedule: disabled
-  dailyIngestionSchedule: disabled
-  aiProcessing: enabled_when_task_manually_triggered
-  manualAdminTriggers: true
+  currentIngestionSchedule: hourly
+  backfillSchedule: every_2_hours
+  ingestionItemLimit: 10
+  sameWorkerCodePathAsProduction: true
 ```
 
-Production jobs run normally.
+Production jobs run the same schedules with `INGESTION_ITEM_LIMIT=-1`.
 
 ### 23.3 Staging Data
 
@@ -1455,7 +1400,7 @@ stagingData:
   secondaryMethod: sanitized_production_copy
   seedCommand: ./app seed-staging
   productionCopy:
-    schedule: manual_or_periodic_later
+    schedule: periodic_later
     sanitize: true
     neverCopySecrets: true
 ```
@@ -1471,7 +1416,7 @@ Seed scenarios must include:
 - Many sources.
 - Missing district.
 - Multiple categories.
-- Pending review incident.
+- Low-confidence auto-published incident.
 
 ### 23.4 CI/CD Workflow
 
@@ -1569,7 +1514,7 @@ decisions:
   D005: public_feed_labels_government_opposition
   D006: no_coalition_or_party_drilldown
   D007: political_accountability_inclusion_rule
-  D008: auto_publish_only_high_confidence_incidents
+  D008: auto_publish_extracted_incidents_for_mvp
   D009: newspapers_and_official_sources_only
   D010: initial_newspaper_allowlist
   D011: bangla_english_toggle_core_requirement
@@ -1578,9 +1523,9 @@ decisions:
   D014: structured_location_plus_original_text
   D015: unknown_actor_internal_only
   D016: incident_lifecycle_status_model
-  D017: minimal_internal_admin_ui
-  D018: basic_auth_for_admin_ui
-  D019: admin_ui_in_nextjs
+  D017: no_admin_review_ui_in_mvp
+  D018: no_manual_publish_approval_in_mvp
+  D019: operations_apis_internal_only_if_needed
   D020: public_incident_detail_page
   D021: source_chips_first_three_plus_more
   D022: feed_ranking_recency_confidence_only
@@ -1595,8 +1540,8 @@ decisions:
   D031: rss_first_ingestion
   D032: store_extracted_text_not_raw_html
   D033: crawler_dedup_by_canonical_url_and_hash
-  D034: daily_rolling_three_day_ingestion
-  D035: hourly_one_day_backfill_until_catchup
+  D034: hourly_current_ingestion_with_per_publisher_cursor
+  D035: two_hour_backfill_until_current_cursor
   D036: backfill_idle_after_catchup
   D037: quartz_scheduler_postgres_job_state
   D038: separate_api_and_worker_processes
@@ -1614,7 +1559,7 @@ decisions:
   D049: actor_color_coding_blue_red
   D050: vercel_frontend_and_github_actions_backend_cicd
   D051: staging_production_parity
-  D052: staging_jobs_manual_only
+  D052: staging_prod_worker_parity_with_item_limit
   D053: staging_seed_command_plus_sanitized_prod_copy
   D054: logs_health_checks_basic_metrics
   D055: telegram_alerts
@@ -1665,7 +1610,6 @@ Tasks:
    - `ai`
    - `correlation`
    - `confidence`
-   - `admin`
    - `scheduler`
    - `taskqueue`
    - `common`
@@ -1717,18 +1661,16 @@ Tasks:
 9. Build incident detail page.
 10. Build methodology/legal page in both languages.
 
-### Phase 5 — Admin UI and Internal APIs
+### Phase 5 — Internal Operations APIs
 
 Dependencies: Phase 3.
 
 Tasks:
 
-1. Add Basic Auth for `/admin` frontend and internal admin APIs.
-2. Implement pending incidents API.
-3. Implement publish/reject/archive/reprocess endpoints.
-4. Build admin pending list page.
-5. Build admin incident review detail page.
-6. Show source evidence, extracted text excerpts, and AI metadata.
+1. Keep public APIs read-only.
+2. Keep internal operations APIs private and API-key protected if added.
+3. Do not add MVP admin review, approval, reject, archive, or reprocess UI.
+4. Expose health, metrics, and safe manual job triggers only if operationally needed.
 
 ### Phase 6 — Task Queue and Scheduler
 
@@ -1739,9 +1681,9 @@ Tasks:
 1. Implement PostgreSQL-backed `processing_tasks` queue.
 2. Implement task locking and retry policy.
 3. Add Quartz with PostgreSQL job store.
-4. Implement hourly backfill job.
-5. Implement daily rolling 3-day ingestion job.
-6. Add admin/manual trigger endpoints for staging.
+4. Implement hourly current ingestion job.
+5. Implement two-hour backfill job.
+6. Add per-publisher ingestion cursors and stale-lock handling.
 
 ### Phase 7 — Ingestion
 
@@ -1784,8 +1726,8 @@ Tasks:
 3. Store embeddings in pgvector.
 4. Implement candidate narrowing.
 5. Implement similarity scoring.
-6. Implement auto-merge/manual-review/create-new policy.
-7. Add admin view for possible duplicates.
+6. Implement auto-merge/create-new policy.
+7. Keep possible duplicate data internal for audit/debugging.
 
 ### Phase 10 — Confidence and Publishing
 
@@ -1795,7 +1737,7 @@ Tasks:
 
 1. Implement confidence formula v1.
 2. Recompute confidence when source attached.
-3. Implement auto-publish criteria.
+3. Implement auto-publish of every extracted MVP incident.
 4. Ensure `UNKNOWN` actor is never public.
 5. Add confidence explanation generation.
 
