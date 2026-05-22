@@ -68,6 +68,7 @@ services:
         condition: service_healthy
     networks:
       - private
+      - public   # needs outbound internet access to fetch RSS feeds
 
   postgres:
     image: postgres:17-alpine
