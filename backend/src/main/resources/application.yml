@@ -11,6 +11,8 @@ spring:
     redis:
       repositories:
         enabled: false
+  quartz:
+    auto-startup: false
 
 management:
   endpoints:

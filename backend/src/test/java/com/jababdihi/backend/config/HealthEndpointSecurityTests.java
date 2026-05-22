@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jababdihi.backend.incident.CategoryRepository;
 import com.jababdihi.backend.incident.IncidentRepository;
+import com.jababdihi.backend.taskqueue.ProcessingTaskRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -28,6 +29,8 @@ class HealthEndpointSecurityTests {
   @MockitoBean private IncidentRepository incidentRepository;
 
   @MockitoBean private CategoryRepository categoryRepository;
+
+  @MockitoBean private ProcessingTaskRepository processingTaskRepository;
 
   @Test
   void healthEndpointIsPublic() throws Exception {
