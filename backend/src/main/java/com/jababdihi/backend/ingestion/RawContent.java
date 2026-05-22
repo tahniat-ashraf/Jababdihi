@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -31,8 +32,14 @@ public class RawContent {
   private Instant fetchedAt;
   private String parsingStatus;
   private String aiProcessingStatus;
+  private boolean politicalAccountabilityLink;
+  private String extractedActorRole;
+  private String extractedCategoryCode;
+  private BigDecimal extractionConfidence;
+  private UUID processedIncidentId;
+  private Instant processedAt;
 
-  protected RawContent() {}
+  public RawContent() {}
 
   public UUID getId() {
     return id;
@@ -132,5 +139,53 @@ public class RawContent {
 
   public void setAiProcessingStatus(String aiProcessingStatus) {
     this.aiProcessingStatus = aiProcessingStatus;
+  }
+
+  public boolean isPoliticalAccountabilityLink() {
+    return politicalAccountabilityLink;
+  }
+
+  public void setPoliticalAccountabilityLink(boolean politicalAccountabilityLink) {
+    this.politicalAccountabilityLink = politicalAccountabilityLink;
+  }
+
+  public String getExtractedActorRole() {
+    return extractedActorRole;
+  }
+
+  public void setExtractedActorRole(String extractedActorRole) {
+    this.extractedActorRole = extractedActorRole;
+  }
+
+  public String getExtractedCategoryCode() {
+    return extractedCategoryCode;
+  }
+
+  public void setExtractedCategoryCode(String extractedCategoryCode) {
+    this.extractedCategoryCode = extractedCategoryCode;
+  }
+
+  public BigDecimal getExtractionConfidence() {
+    return extractionConfidence;
+  }
+
+  public void setExtractionConfidence(BigDecimal extractionConfidence) {
+    this.extractionConfidence = extractionConfidence;
+  }
+
+  public UUID getProcessedIncidentId() {
+    return processedIncidentId;
+  }
+
+  public void setProcessedIncidentId(UUID processedIncidentId) {
+    this.processedIncidentId = processedIncidentId;
+  }
+
+  public Instant getProcessedAt() {
+    return processedAt;
+  }
+
+  public void setProcessedAt(Instant processedAt) {
+    this.processedAt = processedAt;
   }
 }

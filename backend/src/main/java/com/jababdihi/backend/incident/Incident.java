@@ -40,6 +40,8 @@ public class Incident {
   private String extractedLocationText;
   private BigDecimal confidenceScore;
   private String confidenceLevel;
+  private boolean politicalAccountabilityLink;
+  private BigDecimal extractionConfidence;
 
   @Enumerated(EnumType.STRING)
   private IncidentStatus status;
@@ -62,7 +64,7 @@ public class Incident {
       inverseJoinColumns = @JoinColumn(name = "category_code"))
   private Set<Category> categories = new HashSet<>();
 
-  protected Incident() {}
+  public Incident() {}
 
   public UUID getId() {
     return id;
@@ -114,6 +116,22 @@ public class Incident {
 
   public void setConfidenceLevel(String confidenceLevel) {
     this.confidenceLevel = confidenceLevel;
+  }
+
+  public boolean isPoliticalAccountabilityLink() {
+    return politicalAccountabilityLink;
+  }
+
+  public void setPoliticalAccountabilityLink(boolean politicalAccountabilityLink) {
+    this.politicalAccountabilityLink = politicalAccountabilityLink;
+  }
+
+  public BigDecimal getExtractionConfidence() {
+    return extractionConfidence;
+  }
+
+  public void setExtractionConfidence(BigDecimal extractionConfidence) {
+    this.extractionConfidence = extractionConfidence;
   }
 
   public IncidentStatus getStatus() {
