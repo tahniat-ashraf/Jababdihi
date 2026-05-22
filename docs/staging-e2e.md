@@ -41,23 +41,25 @@ The job is skipped if the `STAGING_FRONTEND_URL` repository variable is not set
 
 ### 1. GitHub repository variable
 
-Set `STAGING_FRONTEND_URL` at **Settings → Secrets and variables → Actions →
-Variables** (not Secrets — it is not sensitive):
+Set one variable at **Settings → Secrets and variables → Actions → Variables**:
 
-| Variable | Example value |
-|----------|---------------|
-| `STAGING_FRONTEND_URL` | `https://jababdihi-<hash>-ta-workspace.vercel.app` |
+| Variable | Value | Notes |
+|----------|-------|-------|
+| `VERCEL_TEAM_SLUG` | `ta-workspace` | The slug that appears in your Vercel preview URLs, e.g. `jababdihi-git-main-**ta-workspace**.vercel.app` |
 
-**For a fixed staging URL:** if you have a Vercel alias or custom staging domain
-(e.g. `staging.jababdihi.com`) use that — it never changes between deployments.
+The CI job derives `STAGING_FRONTEND_URL` automatically from the branch name
+using Vercel's deterministic branch-alias format:
 
-**For PR preview URLs:** Vercel creates a unique URL for each PR commit. Until a
-fixed staging alias is configured, set `STAGING_FRONTEND_URL` to the most
-recent Vercel preview URL for your main PR. You can find it in the Vercel
-dashboard under **Deployments**.
+```
+https://jababdihi-git-{branch-slug}-{VERCEL_TEAM_SLUG}.vercel.app
+```
 
-`STAGING_API_BASE_URL` is derived automatically in CI from `STAGING_VPS_HOST`
-(`http://<host>:8081`) and does not need a separate variable.
+For branch `feat/my-feature` → `jababdihi-git-feat-my-feature-ta-workspace.vercel.app`.
+This URL always points to the **latest** Vercel deployment of that branch —
+no hash, stable for the lifetime of the branch.
+
+`STAGING_API_BASE_URL` is derived from `STAGING_VPS_HOST` and does not
+need a separate variable.
 
 ### 2. Staging seed data
 
@@ -86,9 +88,14 @@ cd /opt/jababdihi/staging/infra
 ./scripts/run-seed.sh staging
 exit
 
-# 2. Run the tests
+# 2. Derive the branch alias URL (or look it up in the Vercel dashboard)
+#    Format: https://jababdihi-git-{branch-slug}-ta-workspace.vercel.app
+#    e.g. for branch feat/my-feature:
+#    https://jababdihi-git-feat-my-feature-ta-workspace.vercel.app
+
+# 3. Run the tests
 cd frontend
-STAGING_FRONTEND_URL=https://<your-vercel-preview-url> \
+STAGING_FRONTEND_URL=https://jababdihi-git-<branch-slug>-ta-workspace.vercel.app \
 STAGING_API_BASE_URL=http://<VPS_IP>:8081 \
 npm run test:e2e:staging
 ```
