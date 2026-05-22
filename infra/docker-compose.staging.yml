@@ -13,6 +13,13 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: worker,staging
 
+  postgres:
+    # Expose on VPS localhost only — never publicly reachable.
+    # Enables SSH-tunnelled connections from local dev tools (TablePlus, Postico, psql).
+    # Bind to 127.0.0.1 so the port is NOT open on the public interface.
+    ports:
+      - "127.0.0.1:5432:5432"
+
 volumes:
   postgres-data:
     name: jababdihi_staging_postgres
