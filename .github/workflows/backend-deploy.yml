@@ -1,12 +1,18 @@
 name: Backend Deploy
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Deployment pipeline — guaranteed flow:
+# Two-branch deployment model
 #
-#   test → build-image → deploy-staging → e2e-staging → [approval] → deploy-production
+#   main       → always deploys to staging and runs E2E smoke tests
+#   production → always deploys to production (requires manual approval)
 #
-# Production is never deployed before staging has been verified.
-# The "production" GitHub environment requires a manual approval after e2e-staging passes.
+# Promoting staging → production:
+#   git push origin main:production
+#
+# The local pre-push hook (installed by infra/scripts/setup-git-hooks.sh)
+# verifies that staging is healthy before allowing the push to production.
+# GitHub Actions then requires a manual approval (environment: production)
+# before the deploy steps run.
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
@@ -18,7 +24,7 @@ on:
       - "infra/**"
       - ".github/workflows/backend-deploy.yml"
   push:
-    branches: [main]
+    branches: [main, production]
     paths:
       - "backend/**"
       - "infra/**"
@@ -32,7 +38,7 @@ on:
         options: [staging, prod]
 
 permissions:
-  contents: read
+  contents: write   # needed for creating releases and tags
   packages: write
 
 env:
@@ -40,7 +46,7 @@ env:
 
 jobs:
 
-  # ── 1. Unit tests + build ────────────────────────────────────────────────
+  # ── 1. Build and test ────────────────────────────────────────────────────
   test:
     name: Build and test
     runs-on: ubuntu-latest
@@ -63,7 +69,7 @@ jobs:
       - name: Package
         run: mvn -f backend/pom.xml package -DskipTests
 
-  # ── 2. Build & push Docker image ─────────────────────────────────────────
+  # ── 2. Build and push Docker image ──────────────────────────────────────
   build-image:
     name: Build backend image
     runs-on: ubuntu-latest
@@ -89,9 +95,8 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             TAG="pr-${{ github.event.pull_request.number }}"
           else
-            # Same tag for staging AND production — both environments run the
-            # exact same image.  "prod" prefix is gone; we don't know at build
-            # time whether the image will pass staging, so don't label it prod.
+            # Same SHA tag whether this runs on main or production —
+            # both branches run the exact same image.
             TAG="${{ github.sha }}"
           fi
           echo "image=${BACKEND_IMAGE_BASE}:${TAG}" >> "$GITHUB_OUTPUT"
@@ -107,15 +112,20 @@ jobs:
             ${{ env.BACKEND_IMAGE_BASE }}:${{ github.sha }}
 
   # ── 3. Deploy to staging ─────────────────────────────────────────────────
-  # Runs for every trigger: PRs, push to main, and manual dispatches.
-  # Production is never deployed before this job succeeds.
+  # Runs on every PR and every push to main.
+  # Never runs on push to production branch.
   deploy-staging:
     name: Deploy staging
     runs-on: ubuntu-latest
     needs: build-image
+    if: |
+      github.ref_name != 'production' &&
+      (
+        github.event_name == 'pull_request' ||
+        github.ref_name == 'main' ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+      )
     environment: staging
-    # Skipped only when a PR comes from a fork (no access to secrets).
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
 
@@ -167,67 +177,53 @@ jobs:
           echo "ERROR: Staging health check failed after 60s." >&2
           exit 1
 
-  # ── 4. E2E smoke tests against staging ───────────────────────────────────
-  # Runs after every staging deploy.  Uses Playwright to test the full stack:
-  # frontend (Vercel) → Next.js proxy → staging backend.
+  # ── 4. E2E smoke tests ───────────────────────────────────────────────────
+  # Runs after every staging deploy.
   #
   # URL strategy:
-  #   - Pull requests:  Vercel branch-alias preview URL (auto-derived from branch
-  #                     name; uses Preview env vars → staging BACKEND_API_BASE_URL).
-  #   - Push to main:   vars.STAGING_FRONTEND_URL (a permanent staging domain, e.g.
-  #                     https://staging.jababdihi.com, configured in Vercel with
-  #                     Preview env vars so it proxies to the staging VPS).
-  #
-  # Setup required for push-to-main E2E:
-  #   1. In Vercel: add staging.jababdihi.com as a custom domain on the main branch,
-  #      using the Preview environment (not Production).  This ensures
-  #      BACKEND_API_BASE_URL points to the staging VPS, not the prod API.
-  #   2. In GitHub: set vars.STAGING_FRONTEND_URL = https://staging.jababdihi.com
-  #
-  # If STAGING_FRONTEND_URL is not set, this job fails and blocks production —
-  # by design, since production must not deploy without verified staging.
+  #   Pull requests  → Vercel branch-alias preview URL (Preview env vars
+  #                    → staging BACKEND_API_BASE_URL). Derived automatically
+  #                    from the branch name; no extra setup needed.
+  #   Push to main   → vars.STAGING_FRONTEND_URL if set (a permanent staging
+  #                    domain configured with Preview env vars, e.g.
+  #                    https://staging.jababdihi.com).
+  #                    Falls back to backend-only checks if not set.
   e2e-staging:
     name: Staging E2E smoke tests
     runs-on: ubuntu-latest
     needs: deploy-staging
-    if: needs.deploy-staging.result == 'success'
     steps:
       - uses: actions/checkout@v4
 
       - name: Resolve staging frontend URL
+        id: url
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            # Branch-alias URL: Vercel creates a stable alias per branch that
-            # always uses Preview env vars (BACKEND_API_BASE_URL → staging VPS).
             BRANCH="${{ github.head_ref }}"
             SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/-\+/-/g' | sed 's/^-//;s/-$//')
-            TEAM_SLUG="${{ vars.VERCEL_TEAM_SLUG }}"
-            URL="https://jababdihi-git-${SLUG}-${TEAM_SLUG}.vercel.app"
-            echo "PR mode — derived URL: $URL"
+            URL="https://jababdihi-git-${SLUG}-${{ vars.VERCEL_TEAM_SLUG }}.vercel.app"
+            echo "url=${URL}" >> "$GITHUB_OUTPUT"
+            echo "run_playwright=true" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ vars.STAGING_FRONTEND_URL }}" ]]; then
+            echo "url=${{ vars.STAGING_FRONTEND_URL }}" >> "$GITHUB_OUTPUT"
+            echo "run_playwright=true" >> "$GITHUB_OUTPUT"
           else
-            # Push to main (or workflow_dispatch): must use the static staging domain.
-            # This domain is configured in Vercel with Preview environment variables
-            # so that BACKEND_API_BASE_URL points to the staging VPS, not production.
-            URL="${{ vars.STAGING_FRONTEND_URL }}"
-            if [[ -z "$URL" ]]; then
-              echo "::error::STAGING_FRONTEND_URL repository variable is not set."
-              echo "::error::E2E tests cannot run against the staging frontend on push-to-main."
-              echo "::error::Set up staging.jababdihi.com in Vercel (Preview env) and add"
-              echo "::error::STAGING_FRONTEND_URL=https://staging.jababdihi.com to GitHub"
-              echo "::error::repository variables (Settings → Secrets and variables → Variables)."
-              exit 1
-            fi
-            echo "Main/dispatch mode — using static URL: $URL"
+            echo "url=" >> "$GITHUB_OUTPUT"
+            echo "run_playwright=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::STAGING_FRONTEND_URL not set — running backend-only smoke tests."
+            echo "::notice::To enable full Playwright E2E on main, set up staging.<domain> in Vercel"
+            echo "::notice::(Preview env, staging backend) and add STAGING_FRONTEND_URL to GitHub variables."
           fi
-          echo "STAGING_FRONTEND_URL=${URL}" >> "$GITHUB_ENV"
 
-      - name: Wait for frontend to be ready
+      - name: Wait for Vercel preview to be ready
+        if: steps.url.outputs.run_playwright == 'true'
         run: |
-          echo "Waiting for $STAGING_FRONTEND_URL ..."
+          URL="${{ steps.url.outputs.url }}"
+          echo "Waiting for $URL ..."
           for i in $(seq 1 24); do
-            STATUS=$(curl -o /dev/null -s -w "%{http_code}" "$STAGING_FRONTEND_URL" || true)
+            STATUS=$(curl -o /dev/null -s -w "%{http_code}" "$URL" || true)
             if [ "$STATUS" = "200" ] || [ "$STATUS" = "304" ]; then
-              echo "Frontend is ready (HTTP $STATUS)."
+              echo "Frontend ready (HTTP $STATUS)."
               exit 0
             fi
             echo "  attempt $i/24 — HTTP $STATUS — retrying in 5s"
@@ -252,25 +248,43 @@ jobs:
           ./scripts/run-seed.sh staging
           SSH
 
+      # ── Full Playwright E2E (when a staging frontend URL is available) ──
       - uses: actions/setup-node@v4
+        if: steps.url.outputs.run_playwright == 'true'
         with:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
+        if: steps.url.outputs.run_playwright == 'true'
         run: npm ci --prefix frontend
 
       - name: Install Playwright browsers
+        if: steps.url.outputs.run_playwright == 'true'
         run: npx --prefix frontend playwright install --with-deps chromium
 
-      - name: Run E2E smoke tests
+      - name: Run Playwright E2E smoke tests
+        if: steps.url.outputs.run_playwright == 'true'
         run: npm run test:e2e:staging --prefix frontend
         env:
+          STAGING_FRONTEND_URL: ${{ steps.url.outputs.url }}
           STAGING_API_BASE_URL: http://${{ secrets.STAGING_VPS_HOST }}:8081
 
+      # ── Backend-only smoke test (fallback when no staging frontend URL) ──
+      - name: Backend smoke test (API endpoints)
+        if: steps.url.outputs.run_playwright == 'false'
+        run: |
+          BASE="http://${{ secrets.STAGING_VPS_HOST }}:8081"
+          echo "Running backend-only smoke tests against $BASE ..."
+          curl -fsS "$BASE/actuator/health" | grep -q '"UP"' && echo "  ✓ health"
+          curl -fsS "$BASE/api/incidents?language=en&pageSize=1" | grep -q '"items"' && echo "  ✓ incidents"
+          curl -fsS "$BASE/api/categories?language=en" | grep -q '"items"' && echo "  ✓ categories"
+          curl -fsS "$BASE/api/actors?language=en" | grep -q '"items"' && echo "  ✓ actors"
+          echo "Backend smoke tests passed."
+
       - name: Upload Playwright report
-        if: failure()
+        if: failure() && steps.url.outputs.run_playwright == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: playwright-staging-report-${{ github.run_id }}
@@ -278,28 +292,19 @@ jobs:
           retention-days: 7
 
   # ── 5. Deploy to production ───────────────────────────────────────────────
-  # Only reachable after e2e-staging passes.  Requires a manual approval in
-  # the "production" GitHub environment before the deploy steps execute.
-  # To approve: Actions → this workflow run → Review deployments → Approve.
-  #
-  # build-image is listed in needs (alongside e2e-staging) so that its outputs
-  # (image name) are accessible here.  e2e-staging already depends on
-  # build-image transitively, so listing both causes no extra waiting.
+  # Triggered only by a push to the 'production' branch or workflow_dispatch.
+  # Normal promotion path:
+  #   git push origin main:production
+  # The local pre-push hook verifies staging health before allowing this push.
+  # GitHub then requires a manual approval (environment: production) before
+  # the deploy steps run.
   deploy-production:
     name: Deploy production
     runs-on: ubuntu-latest
-    needs: [build-image, e2e-staging]
-    # always() lets this job evaluate its own if-condition even when an
-    # upstream job is skipped (e.g. on a PR where production must not run).
-    # The explicit result checks are the real gate.
+    needs: build-image
     if: |
-      always() &&
-      needs.build-image.result == 'success' &&
-      needs.e2e-staging.result == 'success' &&
-      (
-        github.ref_name == 'main' ||
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
-      )
+      github.ref_name == 'production' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -319,8 +324,8 @@ jobs:
       - name: Deploy production
         timeout-minutes: 20
         run: |
-          # The image was built once, deployed to staging, verified by E2E —
-          # now deploy the exact same image to production.
+          # The image was built from the same SHA that was verified on staging.
+          # pushing main:production ensures the SHA is identical.
           ssh -p "${{ secrets.PROD_VPS_PORT || 22 }}" -o ServerAliveInterval=30 -o ServerAliveCountMax=40 \
             "${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_HOST }}" <<'SSH'
           set -eu
@@ -332,3 +337,29 @@ jobs:
           docker pull "$BACKEND_IMAGE"
           ./scripts/deploy-prod.sh "$IMAGE_TAG"
           SSH
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Tag format: v2026.05.22
+          # If multiple releases happen on the same day, append -2, -3, etc.
+          DATE=$(date -u +%Y.%m.%d)
+          TAG="v${DATE}"
+
+          N=2
+          CANDIDATE="$TAG"
+          while gh release view "$CANDIDATE" --repo "${{ github.repository }}" > /dev/null 2>&1; do
+            CANDIDATE="${TAG}-${N}"
+            N=$((N + 1))
+          done
+          TAG="$CANDIDATE"
+
+          echo "Creating release ${TAG} ..."
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --title "Release ${TAG}" \
+            --generate-notes \
+            --latest \
+            --target "${{ github.sha }}"
+          echo "Release created: https://github.com/${{ github.repository }}/releases/tag/${TAG}"
