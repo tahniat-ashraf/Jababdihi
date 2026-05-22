@@ -1,3 +1,7 @@
+app:
+  admin:
+    api-key: dev-api-key
+
 spring:
   application:
     name: jababdihi-backend
