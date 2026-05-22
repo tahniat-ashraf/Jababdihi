@@ -56,6 +56,27 @@ export type PageResponse<T> = {
   totalItems: number;
 };
 
+export type Source = {
+  publisherName?: string | null;
+  sourceTitle?: string | null;
+  url: string;
+  publishedAt?: string | null;
+};
+
+export type IncidentDetail = {
+  id: string;
+  actorRole: ActorRole;
+  actorColor: string;
+  title: string;
+  summary: string;
+  categories: string[];
+  incidentDate?: string | null;
+  location?: LocationSummary | null;
+  confidence: Confidence;
+  sources: Source[];
+  disclaimer: string;
+};
+
 export type ApiError = {
   message: string;
 };

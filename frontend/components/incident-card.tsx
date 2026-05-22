@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { ConfidenceGauge } from "@/components/confidence-gauge";
 import type { IncidentSummary, LanguageCode } from "@/lib/public-api";
@@ -50,7 +51,12 @@ export function IncidentCard({ incident, language }: IncidentCardProps) {
           </div>
 
           <h2 className="mt-3 text-lg font-semibold leading-7">
-            {incident.title}
+            <Link
+              className="hover:underline"
+              href={incident.detailUrl}
+            >
+              {incident.title}
+            </Link>
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
