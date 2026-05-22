@@ -1,5 +1,14 @@
 name: Backend Deploy
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Deployment pipeline — guaranteed flow:
+#
+#   test → build-image → deploy-staging → e2e-staging → [approval] → deploy-production
+#
+# Production is never deployed before staging has been verified.
+# The "production" GitHub environment requires a manual approval after e2e-staging passes.
+# ─────────────────────────────────────────────────────────────────────────────
+
 on:
   pull_request:
     branches: [main]
@@ -9,7 +18,7 @@ on:
       - "infra/**"
       - ".github/workflows/backend-deploy.yml"
   push:
-    branches: [staging, main]
+    branches: [main]
     paths:
       - "backend/**"
       - "infra/**"
@@ -30,16 +39,16 @@ env:
   BACKEND_IMAGE_BASE: ghcr.io/tahniat-ashraf/jababdihi-backend
 
 jobs:
+
+  # ── 1. Unit tests + build ────────────────────────────────────────────────
   test:
     name: Build and test
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "25"
@@ -54,6 +63,7 @@ jobs:
       - name: Package
         run: mvn -f backend/pom.xml package -DskipTests
 
+  # ── 2. Build & push Docker image ─────────────────────────────────────────
   build-image:
     name: Build backend image
     runs-on: ubuntu-latest
@@ -61,11 +71,9 @@ jobs:
     outputs:
       image: ${{ steps.image.outputs.image }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -80,14 +88,15 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             TAG="pr-${{ github.event.pull_request.number }}"
-          elif [[ "${{ github.ref_name }}" == "main" || "${{ github.event.inputs.environment }}" == "prod" ]]; then
-            TAG="prod-${{ github.sha }}"
           else
-            TAG="staging-${{ github.sha }}"
+            # Same tag for staging AND production — both environments run the
+            # exact same image.  "prod" prefix is gone; we don't know at build
+            # time whether the image will pass staging, so don't label it prod.
+            TAG="${{ github.sha }}"
           fi
           echo "image=${BACKEND_IMAGE_BASE}:${TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push backend image
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: backend
@@ -97,18 +106,20 @@ jobs:
             ${{ steps.image.outputs.image }}
             ${{ env.BACKEND_IMAGE_BASE }}:${{ github.sha }}
 
+  # ── 3. Deploy to staging ─────────────────────────────────────────────────
+  # Runs for every trigger: PRs, push to main, and manual dispatches.
+  # Production is never deployed before this job succeeds.
   deploy-staging:
     name: Deploy staging
     runs-on: ubuntu-latest
     needs: build-image
-    if: github.ref_name == 'staging' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
     environment: staging
+    # Skipped only when a PR comes from a fork (no access to secrets).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install SSH key
-        uses: webfactory/ssh-agent@v0.9.0
+      - uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.STAGING_VPS_SSH_KEY }}
 
@@ -123,7 +134,8 @@ jobs:
       - name: Run staging migrations and deploy
         timeout-minutes: 30
         run: |
-          ssh -p 22 -o ServerAliveInterval=30 -o ServerAliveCountMax=40 "${{ secrets.STAGING_VPS_USER }}@${{ secrets.STAGING_VPS_HOST }}" <<'SSH'
+          ssh -p 22 -o ServerAliveInterval=30 -o ServerAliveCountMax=40 \
+            "${{ secrets.STAGING_VPS_USER }}@${{ secrets.STAGING_VPS_HOST }}" <<'SSH'
           set -eu
           cd "${{ secrets.STAGING_DEPLOY_PATH }}"
           echo "${{ secrets.GHCR_TOKEN || github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -155,44 +167,76 @@ jobs:
           echo "ERROR: Staging health check failed after 60s." >&2
           exit 1
 
+  # ── 4. E2E smoke tests against staging ───────────────────────────────────
+  # Runs after every staging deploy.  Uses Playwright to test the full stack:
+  # frontend (Vercel) → Next.js proxy → staging backend.
+  #
+  # URL strategy:
+  #   - Pull requests:  Vercel branch-alias preview URL (auto-derived from branch
+  #                     name; uses Preview env vars → staging BACKEND_API_BASE_URL).
+  #   - Push to main:   vars.STAGING_FRONTEND_URL (a permanent staging domain, e.g.
+  #                     https://staging.jababdihi.com, configured in Vercel with
+  #                     Preview env vars so it proxies to the staging VPS).
+  #
+  # Setup required for push-to-main E2E:
+  #   1. In Vercel: add staging.jababdihi.com as a custom domain on the main branch,
+  #      using the Preview environment (not Production).  This ensures
+  #      BACKEND_API_BASE_URL points to the staging VPS, not the prod API.
+  #   2. In GitHub: set vars.STAGING_FRONTEND_URL = https://staging.jababdihi.com
+  #
+  # If STAGING_FRONTEND_URL is not set, this job fails and blocks production —
+  # by design, since production must not deploy without verified staging.
   e2e-staging:
     name: Staging E2E smoke tests
     runs-on: ubuntu-latest
     needs: deploy-staging
-    if: github.ref_name == 'staging' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    if: needs.deploy-staging.result == 'success'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Derive Vercel preview URL from branch name
+      - name: Resolve staging frontend URL
         run: |
-          # Vercel branch alias format:
-          #   https://{project}-git-{branch-slug}-{team-slug}.vercel.app
-          # Branch slug: lowercase, non-alphanumeric chars → hyphen, no leading/trailing hyphens.
-          BRANCH="${{ github.head_ref || github.ref_name }}"
-          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/-\+/-/g' | sed 's/^-//;s/-$//')
-          TEAM_SLUG="${{ vars.VERCEL_TEAM_SLUG }}"
-          URL="https://jababdihi-git-${SLUG}-${TEAM_SLUG}.vercel.app"
-          echo "Derived STAGING_FRONTEND_URL: $URL"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # Branch-alias URL: Vercel creates a stable alias per branch that
+            # always uses Preview env vars (BACKEND_API_BASE_URL → staging VPS).
+            BRANCH="${{ github.head_ref }}"
+            SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/-\+/-/g' | sed 's/^-//;s/-$//')
+            TEAM_SLUG="${{ vars.VERCEL_TEAM_SLUG }}"
+            URL="https://jababdihi-git-${SLUG}-${TEAM_SLUG}.vercel.app"
+            echo "PR mode — derived URL: $URL"
+          else
+            # Push to main (or workflow_dispatch): must use the static staging domain.
+            # This domain is configured in Vercel with Preview environment variables
+            # so that BACKEND_API_BASE_URL points to the staging VPS, not production.
+            URL="${{ vars.STAGING_FRONTEND_URL }}"
+            if [[ -z "$URL" ]]; then
+              echo "::error::STAGING_FRONTEND_URL repository variable is not set."
+              echo "::error::E2E tests cannot run against the staging frontend on push-to-main."
+              echo "::error::Set up staging.jababdihi.com in Vercel (Preview env) and add"
+              echo "::error::STAGING_FRONTEND_URL=https://staging.jababdihi.com to GitHub"
+              echo "::error::repository variables (Settings → Secrets and variables → Variables)."
+              exit 1
+            fi
+            echo "Main/dispatch mode — using static URL: $URL"
+          fi
           echo "STAGING_FRONTEND_URL=${URL}" >> "$GITHUB_ENV"
 
-      - name: Wait for Vercel preview to be ready
+      - name: Wait for frontend to be ready
         run: |
-          echo "Waiting for Vercel preview at $STAGING_FRONTEND_URL ..."
+          echo "Waiting for $STAGING_FRONTEND_URL ..."
           for i in $(seq 1 24); do
             STATUS=$(curl -o /dev/null -s -w "%{http_code}" "$STAGING_FRONTEND_URL" || true)
             if [ "$STATUS" = "200" ] || [ "$STATUS" = "304" ]; then
-              echo "Vercel preview is ready (HTTP $STATUS)."
+              echo "Frontend is ready (HTTP $STATUS)."
               exit 0
             fi
             echo "  attempt $i/24 — HTTP $STATUS — retrying in 5s"
             sleep 5
           done
-          echo "ERROR: Vercel preview did not become ready after 120s." >&2
+          echo "ERROR: Frontend did not become ready after 120s." >&2
           exit 1
 
-      - name: Install SSH key
-        uses: webfactory/ssh-agent@v0.9.0
+      - uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.STAGING_VPS_SSH_KEY }}
 
@@ -201,14 +245,14 @@ jobs:
 
       - name: Seed staging data (idempotent)
         run: |
-          ssh -p 22 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 "${{ secrets.STAGING_VPS_USER }}@${{ secrets.STAGING_VPS_HOST }}" <<'SSH'
+          ssh -p 22 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+            "${{ secrets.STAGING_VPS_USER }}@${{ secrets.STAGING_VPS_HOST }}" <<'SSH'
           set -eu
           cd "${{ secrets.STAGING_DEPLOY_PATH }}"
           ./scripts/run-seed.sh staging
           SSH
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
@@ -220,7 +264,7 @@ jobs:
       - name: Install Playwright browsers
         run: npx --prefix frontend playwright install --with-deps chromium
 
-      - name: Run staging E2E
+      - name: Run E2E smoke tests
         run: npm run test:e2e:staging --prefix frontend
         env:
           STAGING_API_BASE_URL: http://${{ secrets.STAGING_VPS_HOST }}:8081
@@ -233,18 +277,34 @@ jobs:
           path: frontend/playwright-report/
           retention-days: 7
 
+  # ── 5. Deploy to production ───────────────────────────────────────────────
+  # Only reachable after e2e-staging passes.  Requires a manual approval in
+  # the "production" GitHub environment before the deploy steps execute.
+  # To approve: Actions → this workflow run → Review deployments → Approve.
+  #
+  # build-image is listed in needs (alongside e2e-staging) so that its outputs
+  # (image name) are accessible here.  e2e-staging already depends on
+  # build-image transitively, so listing both causes no extra waiting.
   deploy-production:
     name: Deploy production
     runs-on: ubuntu-latest
-    needs: build-image
-    if: github.ref_name == 'main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
+    needs: [build-image, e2e-staging]
+    # always() lets this job evaluate its own if-condition even when an
+    # upstream job is skipped (e.g. on a PR where production must not run).
+    # The explicit result checks are the real gate.
+    if: |
+      always() &&
+      needs.build-image.result == 'success' &&
+      needs.e2e-staging.result == 'success' &&
+      (
+        github.ref_name == 'main' ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
+      )
     environment: production
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install SSH key
-        uses: webfactory/ssh-agent@v0.9.0
+      - uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.PROD_VPS_SSH_KEY }}
 
@@ -259,7 +319,10 @@ jobs:
       - name: Deploy production
         timeout-minutes: 20
         run: |
-          ssh -p "${{ secrets.PROD_VPS_PORT || 22 }}" -o ServerAliveInterval=30 -o ServerAliveCountMax=40 "${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_HOST }}" <<'SSH'
+          # The image was built once, deployed to staging, verified by E2E —
+          # now deploy the exact same image to production.
+          ssh -p "${{ secrets.PROD_VPS_PORT || 22 }}" -o ServerAliveInterval=30 -o ServerAliveCountMax=40 \
+            "${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_HOST }}" <<'SSH'
           set -eu
           cd "${{ secrets.PROD_DEPLOY_PATH }}"
           echo "${{ secrets.GHCR_TOKEN || github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin

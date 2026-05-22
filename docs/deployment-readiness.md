@@ -143,7 +143,36 @@ Set at **Settings → Environment Variables**, scope: **Production**.
 - [ ] `ADMIN_USERNAME` set for Production
 - [ ] `ADMIN_PASSWORD` set for Production
 
-### 3.4 Deployment protection (recommended)
+### 3.4 Staging frontend domain (required for post-merge E2E)
+
+The CI pipeline (push to `main`) needs a stable Vercel URL that:
+- Serves the **latest main-branch** frontend
+- Uses **Preview** environment variables (so `BACKEND_API_BASE_URL` points to the
+  staging VPS, not the production API)
+
+Without this, E2E smoke tests cannot verify the full stack after merge and the
+pipeline blocks production.
+
+**Step-by-step:**
+
+1. **Vercel → Project → Settings → Domains** → Add domain →
+   enter `staging.jababdihi.com` (or `staging.<your-domain>`)
+2. In the domain settings, set **Git branch** to `main` and
+   **Environment** to **Preview** *(not Production)*
+3. Add the DNS CNAME in Cloudflare: `staging` → `cname.vercel-dns.com`,
+   **Proxy: ON (orange cloud)**
+4. **GitHub → Settings → Secrets and variables → Actions → Variables** →
+   Add `STAGING_FRONTEND_URL` = `https://staging.jababdihi.com`
+
+After this, every push to `main` builds a Vercel deployment at
+`staging.jababdihi.com` (Preview env, staging backend), which the CI E2E
+job uses before approving the production deploy.
+
+- [ ] `staging.jababdihi.com` added in Vercel with branch = `main`, environment = Preview
+- [ ] DNS CNAME for `staging.<domain>` created in Cloudflare (Proxy: ON)
+- [ ] `STAGING_FRONTEND_URL` repository variable set in GitHub Actions
+
+### 3.5 Deployment protection (recommended)
 
 Prevent crawlers and the public from discovering the admin page on preview URLs.
 
@@ -197,8 +226,10 @@ Set at **Settings → Secrets and variables → Actions → Variables**.
 | Variable | Value |
 |----------|-------|
 | `VERCEL_TEAM_SLUG` | `ta-workspace` (the slug in your Vercel preview URLs) |
+| `STAGING_FRONTEND_URL` | `https://staging.<YOUR_DOMAIN>` (Vercel domain with Preview env + staging backend — see section 3.4) |
 
 - [ ] `VERCEL_TEAM_SLUG` present
+- [ ] `STAGING_FRONTEND_URL` present *(required for post-merge E2E and production gating)*
 
 ### 4.3 Environments
 
