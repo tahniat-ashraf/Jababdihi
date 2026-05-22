@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -26,7 +27,16 @@ import org.springframework.stereotype.Component;
  *       -Dspring-boot.run.arguments="--app.seed=staging"
  * </pre>
  */
+/**
+ * Safety guard: never activate on the production profile.
+ *
+ * <p>{@code @Profile("!prod")} ensures the bean is not created when the "prod" Spring profile is
+ * active, providing defence-in-depth on top of the {@code @ConditionalOnProperty} guard. Even if
+ * {@code --app.seed=staging} were accidentally passed to a production container, this annotation
+ * prevents the seeder from running.
+ */
 @Component
+@Profile("!prod")
 @ConditionalOnProperty(name = "app.seed", havingValue = "staging")
 class StagingDataSeeder implements ApplicationRunner {
   private static final Logger log = LoggerFactory.getLogger(StagingDataSeeder.class);

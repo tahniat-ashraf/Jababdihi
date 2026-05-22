@@ -155,6 +155,84 @@ jobs:
           echo "ERROR: Staging health check failed after 60s." >&2
           exit 1
 
+  e2e-staging:
+    name: Staging E2E smoke tests
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref_name == 'staging' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive Vercel preview URL from branch name
+        run: |
+          # Vercel branch alias format:
+          #   https://{project}-git-{branch-slug}-{team-slug}.vercel.app
+          # Branch slug: lowercase, non-alphanumeric chars → hyphen, no leading/trailing hyphens.
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/-\+/-/g' | sed 's/^-//;s/-$//')
+          TEAM_SLUG="${{ vars.VERCEL_TEAM_SLUG }}"
+          URL="https://jababdihi-git-${SLUG}-${TEAM_SLUG}.vercel.app"
+          echo "Derived STAGING_FRONTEND_URL: $URL"
+          echo "STAGING_FRONTEND_URL=${URL}" >> "$GITHUB_ENV"
+
+      - name: Wait for Vercel preview to be ready
+        run: |
+          echo "Waiting for Vercel preview at $STAGING_FRONTEND_URL ..."
+          for i in $(seq 1 24); do
+            STATUS=$(curl -o /dev/null -s -w "%{http_code}" "$STAGING_FRONTEND_URL" || true)
+            if [ "$STATUS" = "200" ] || [ "$STATUS" = "304" ]; then
+              echo "Vercel preview is ready (HTTP $STATUS)."
+              exit 0
+            fi
+            echo "  attempt $i/24 — HTTP $STATUS — retrying in 5s"
+            sleep 5
+          done
+          echo "ERROR: Vercel preview did not become ready after 120s." >&2
+          exit 1
+
+      - name: Install SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_VPS_SSH_KEY }}
+
+      - name: Trust VPS host
+        run: ssh-keyscan -p 22 "${{ secrets.STAGING_VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Seed staging data (idempotent)
+        run: |
+          ssh -p 22 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 "${{ secrets.STAGING_VPS_USER }}@${{ secrets.STAGING_VPS_HOST }}" <<'SSH'
+          set -eu
+          cd "${{ secrets.STAGING_DEPLOY_PATH }}"
+          ./scripts/run-seed.sh staging
+          SSH
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Install Playwright browsers
+        run: npx --prefix frontend playwright install --with-deps chromium
+
+      - name: Run staging E2E
+        run: npm run test:e2e:staging --prefix frontend
+        env:
+          STAGING_API_BASE_URL: http://${{ secrets.STAGING_VPS_HOST }}:8081
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-staging-report-${{ github.run_id }}
+          path: frontend/playwright-report/
+          retention-days: 7
+
   deploy-production:
     name: Deploy production
     runs-on: ubuntu-latest
