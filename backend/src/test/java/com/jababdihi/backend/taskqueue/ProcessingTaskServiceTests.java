@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.jababdihi.backend.observability.OperationalMetricsService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -21,9 +22,10 @@ class ProcessingTaskServiceTests {
   private static final Instant NOW = Instant.parse("2026-03-01T00:00:00Z");
 
   private final ProcessingTaskRepository repository = mock(ProcessingTaskRepository.class);
+  private final OperationalMetricsService metricsService = mock(OperationalMetricsService.class);
   private final ProcessingTaskService service =
       new ProcessingTaskService(
-          repository, new TaskBackoffPolicy(), Clock.fixed(NOW, ZoneOffset.UTC));
+          repository, new TaskBackoffPolicy(), Clock.fixed(NOW, ZoneOffset.UTC), metricsService);
 
   @Test
   void enqueueCreatesPendingTaskWithDefaultAttempts() {
