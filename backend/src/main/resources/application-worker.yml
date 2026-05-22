@@ -68,3 +68,126 @@ app:
         homepage-url: https://www.ittefaq.com.bd
         feed-url: https://www.ittefaq.com.bd/rss.xml
         language-code: bn
+  incident-processing:
+    deduplication:
+      auto-merge-threshold: 0.86
+      manual-review-threshold: 0.72
+    fallback-category-code: ABUSE_OF_POWER
+    political-keywords:
+      - political
+      - party
+      - activist
+      - leader
+      - government
+      - opposition
+      - minister
+      - police
+      - প্রশাসন
+      - সরকার
+      - দল
+      - নেতা
+      - কর্মী
+      - পুলিশ
+    accountability-keywords:
+      - alleged
+      - allegation
+      - accused
+      - attack
+      - violence
+      - extortion
+      - corruption
+      - bribe
+      - threat
+      - abuse
+      - reported
+      - অভিযোগ
+      - হামলা
+      - সহিংসতা
+      - চাঁদাবাজি
+      - দুর্নীতি
+      - ঘুষ
+      - হুমকি
+    government-actor-keywords:
+      - government
+      - minister
+      - ministry
+      - police
+      - officer
+      - official
+      - administration
+      - awami league
+      - chhatra league
+      - jubo league
+      - সরকার
+      - মন্ত্রী
+      - মন্ত্রণালয়
+      - পুলিশ
+      - কর্মকর্তা
+      - প্রশাসন
+      - আওয়ামী লীগ
+      - ছাত্রলীগ
+      - যুবলীগ
+    opposition-actor-keywords:
+      - opposition
+      - bnp
+      - jamaat
+      - opposition activist
+      - বিরোধী
+      - বিএনপি
+      - জামায়াত
+    district-keywords:
+      - Dhaka
+      - Chattogram
+      - Rajshahi
+      - Khulna
+      - Barishal
+      - Sylhet
+      - Rangpur
+      - Mymensingh
+      - Cumilla
+      - Narayanganj
+      - Gazipur
+      - ঢাকা
+      - চট্টগ্রাম
+      - রাজশাহী
+      - খুলনা
+      - বরিশাল
+      - সিলেট
+      - রংপুর
+      - ময়মনসিংহ
+      - কুমিল্লা
+      - নারায়ণগঞ্জ
+      - গাজীপুর
+    category-rules:
+      - code: KILLING
+        keywords: [killed, killing, murder, dead, হত্যা, খুন, নিহত]
+      - code: SEXUAL_VIOLENCE
+        keywords: [rape, sexual assault, sexual violence, ধর্ষণ, যৌন]
+      - code: EXTORTION
+        keywords: [extortion, chanda, demanded money, চাঁদাবাজি, চাঁদা]
+      - code: CORRUPTION_BRIBERY
+        keywords: [corruption, bribe, bribery, graft, দুর্নীতি, ঘুষ]
+      - code: LAND_GRABBING
+        keywords: [land grab, land grabbing, property capture, জমি দখল]
+      - code: ARMED_THREAT_ATTACK
+        keywords: [armed, weapon, gun, attack, হামলা, অস্ত্র, গুলি]
+      - code: ABDUCTION_CONFINEMENT
+        keywords: [abduction, abducted, kidnapped, confinement, অপহরণ, আটক]
+      - code: MOB_VIOLENCE
+        keywords: [mob, lynching, গণপিটুনি]
+      - code: INTIMIDATION
+        keywords: [threat, intimidation, threatened, হুমকি, ভয়ভীতি]
+      - code: ATTACK_ON_INSTITUTION
+        keywords: [institution, school, college, university, hospital, প্রতিষ্ঠান]
+      - code: COMMUNAL_RELIGIOUS_VIOLENCE
+        keywords: [communal, religious, temple, mosque, সাম্প্রদায়িক, ধর্মীয়]
+      - code: ELECTION_VIOLENCE
+        keywords: [election, vote, polling, নির্বাচন, ভোট]
+      - code: DRUG_ARMS_CRIME
+        keywords: [drug, narcotics, arms, yaba, মাদক, অস্ত্র]
+      - code: ROBBERY_MUGGING
+        keywords: [robbery, mugging, snatching, ডাকাতি, ছিনতাই]
+      - code: ABUSE_OF_POWER
+        keywords: [abuse of power, misuse of power, ক্ষমতার অপব্যবহার]
+      - code: POLITICAL_VIOLENCE
+        keywords: [political violence, clash, activist, সংঘর্ষ, রাজনৈতিক সহিংসতা]

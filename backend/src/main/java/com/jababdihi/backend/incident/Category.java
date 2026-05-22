@@ -14,7 +14,7 @@ public class Category {
   private boolean defaultVisible;
   private int displayOrder;
 
-  protected Category() {}
+  public Category() {}
 
   public String getCode() {
     return code;

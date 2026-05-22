@@ -40,7 +40,7 @@ public class IncidentSource {
   private BigDecimal aiRelevanceScore;
   private Instant createdAt;
 
-  protected IncidentSource() {}
+  public IncidentSource() {}
 
   public UUID getId() {
     return id;

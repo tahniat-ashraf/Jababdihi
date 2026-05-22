@@ -20,7 +20,7 @@ public class Location {
   private BigDecimal latitude;
   private BigDecimal longitude;
 
-  protected Location() {}
+  public Location() {}
 
   public UUID getId() {
     return id;
