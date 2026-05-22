@@ -159,13 +159,37 @@ jobs:
     name: Staging E2E smoke tests
     runs-on: ubuntu-latest
     needs: deploy-staging
-    if: |
-      (github.ref_name == 'staging' || github.event_name == 'pull_request' ||
-       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')) &&
-      vars.STAGING_FRONTEND_URL != ''
+    if: github.ref_name == 'staging' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Derive Vercel preview URL from branch name
+        run: |
+          # Vercel branch alias format:
+          #   https://{project}-git-{branch-slug}-{team-slug}.vercel.app
+          # Branch slug: lowercase, non-alphanumeric chars → hyphen, no leading/trailing hyphens.
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+          SLUG=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/-\+/-/g' | sed 's/^-//;s/-$//')
+          TEAM_SLUG="${{ vars.VERCEL_TEAM_SLUG }}"
+          URL="https://jababdihi-git-${SLUG}-${TEAM_SLUG}.vercel.app"
+          echo "Derived STAGING_FRONTEND_URL: $URL"
+          echo "STAGING_FRONTEND_URL=${URL}" >> "$GITHUB_ENV"
+
+      - name: Wait for Vercel preview to be ready
+        run: |
+          echo "Waiting for Vercel preview at $STAGING_FRONTEND_URL ..."
+          for i in $(seq 1 24); do
+            STATUS=$(curl -o /dev/null -s -w "%{http_code}" "$STAGING_FRONTEND_URL" || true)
+            if [ "$STATUS" = "200" ] || [ "$STATUS" = "304" ]; then
+              echo "Vercel preview is ready (HTTP $STATUS)."
+              exit 0
+            fi
+            echo "  attempt $i/24 — HTTP $STATUS — retrying in 5s"
+            sleep 5
+          done
+          echo "ERROR: Vercel preview did not become ready after 120s." >&2
+          exit 1
 
       - name: Install SSH key
         uses: webfactory/ssh-agent@v0.9.0
@@ -199,7 +223,6 @@ jobs:
       - name: Run staging E2E
         run: npm run test:e2e:staging --prefix frontend
         env:
-          STAGING_FRONTEND_URL: ${{ vars.STAGING_FRONTEND_URL }}
           STAGING_API_BASE_URL: http://${{ secrets.STAGING_VPS_HOST }}:8081
 
       - name: Upload Playwright report
