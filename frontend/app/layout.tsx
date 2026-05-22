@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Suspense } from "react";
 import { Newsreader, Noto_Serif_Bengali, Inter_Tight } from "next/font/google";
 import "./globals.css";
+import { SiteFooter } from "@/components/site-footer";
 import { TopNavigation } from "@/components/top-navigation";
 
 const serif = Newsreader({
@@ -50,6 +51,9 @@ export default function RootLayout({
         <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pb-16 pt-3 sm:px-6 lg:max-w-5xl lg:px-8">
           {children}
         </main>
+        <Suspense fallback={null}>
+          <SiteFooter />
+        </Suspense>
       </body>
     </html>
   );

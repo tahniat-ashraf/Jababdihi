@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,12 +17,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * Inserts deterministic staging data for smoke-testing the public feed.
+ * Inserts deterministic staging data for smoke-testing public localization and review flows.
  *
- * <p>Activated only when {@code --app.seed=staging} is passed on the command line. Idempotent:
- * skips if publishers are already present.
- *
- * <p>Run with:
+ * <p>Activated only when {@code --app.seed=staging} is passed on the command line.
  *
  * <pre>
  *   ./mvnw spring-boot:run -Dspring-boot.run.profiles=api,seed \
@@ -30,8 +29,8 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "app.seed", havingValue = "staging")
 class StagingDataSeeder implements ApplicationRunner {
-
   private static final Logger log = LoggerFactory.getLogger(StagingDataSeeder.class);
+  private static final String SOURCE_PREFIX = "https://seed.jababdihi.local/";
 
   private final JdbcTemplate jdbc;
 
@@ -43,545 +42,275 @@ class StagingDataSeeder implements ApplicationRunner {
   public void run(ApplicationArguments args) {
     Integer existing =
         jdbc.queryForObject(
-            "SELECT COUNT(*) FROM publishers WHERE domain = 'prothomalo.com'", Integer.class);
+            "select count(*) from incident_sources where source_url like ?",
+            Integer.class,
+            SOURCE_PREFIX + "%");
     if (existing != null && existing > 0) {
-      log.info("Staging data already present — skipping");
+      log.info("Staging seed data already present - skipping");
       System.exit(0);
       return;
     }
 
-    log.info("Seeding staging data...");
+    Map<String, UUID> publishers =
+        Map.of(
+            "Prothom Alo",
+            publisher("Prothom Alo", "prothomalo.com", "https://www.prothomalo.com"),
+            "The Daily Star",
+            publisher("The Daily Star", "thedailystar.net", "https://www.thedailystar.net"),
+            "bdnews24",
+            publisher("bdnews24", "bdnews24.com", "https://bdnews24.com"),
+            "Dhaka Tribune",
+            publisher("Dhaka Tribune", "dhakatribune.com", "https://www.dhakatribune.com"),
+            "New Age",
+            publisher("New Age", "newagebd.net", "https://www.newagebd.net"));
 
-    UUID pa = insertPublisher("Prothom Alo", "prothomalo.com", "https://www.prothomalo.com");
-    UUID tds =
-        insertPublisher("The Daily Star", "thedailystar.net", "https://www.thedailystar.net");
-    UUID bd = insertPublisher("bdnews24", "bdnews24.com", "https://bdnews24.com");
-    UUID dt = insertPublisher("Dhaka Tribune", "dhakatribune.com", "https://www.dhakatribune.com");
-    UUID na = insertPublisher("New Age", "newagebd.net", "https://www.newagebd.net");
-    List<UUID> pubs = List.of(pa, tds, bd, dt, na);
+    UUID dhaka = location("Dhaka", "Dhaka", "Mirpur");
+    UUID chattogram = location("Chattogram", "Chattogram", null);
 
-    UUID loc = insertLocation();
-
-    insertRows(govPublished(loc), pubs);
-    insertRows(oppPublished(loc), pubs);
-    insertRows(nonPublic(loc), pubs);
-
-    log.info("Staging seed complete — 31 incidents created");
+    log.info("Seeding localized staging incidents...");
+    for (SeedIncident incident : seedIncidents(dhaka, chattogram)) {
+      insertIncident(incident, publishers);
+    }
+    log.info(
+        "Staging seed complete - {} representative incidents created",
+        seedIncidents(dhaka, chattogram).size());
     System.exit(0);
   }
 
-  // ---- Seed data definitions ----
-
-  private List<SeedRow> govPublished(UUID loc) {
+  private List<SeedIncident> seedIncidents(UUID dhaka, UUID chattogram) {
     return List.of(
-        // 1. EXTORTION + ABUSE_OF_POWER — HIGH — 5 sources → shows "+2 more"
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            82,
-            loc,
-            d(15),
-            "স্থানীয় নেতার বিরুদ্ধে চাঁদাবাজির অভিযোগ",
-            "একাধিক সংবাদমাধ্যমে স্থানীয় রাজনৈতিক সংশ্লিষ্ট ব্যক্তির বিরুদ্ধে"
-                + " ব্যবসায়ীদের কাছ থেকে অর্থ দাবির অভিযোগ প্রকাশিত হয়েছে।",
-            "Local leader alleged to extort businesses",
-            "Multiple news outlets reported allegations that a politically affiliated local"
-                + " leader demanded payments from business owners.",
-            List.of("EXTORTION", "ABUSE_OF_POWER"),
-            5),
-        // 2. CORRUPTION_BRIBERY — HIGH — 4 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            78,
-            loc,
-            d(14),
-            "কর্মকর্তার বিরুদ্ধে ঘুষ নেওয়ার অভিযোগ",
-            "সূত্র অনুযায়ী, একজন সরকারি কর্মকর্তা অনুমতিপত্রের জন্য অবৈধ অর্থ দাবি"
-                + " করেছেন বলে অভিযোগ রয়েছে।",
-            "Official alleged to accept bribes for permits",
-            "Sources reported allegations that a government official demanded unlawful payments"
-                + " in exchange for permits.",
-            List.of("CORRUPTION_BRIBERY"),
-            4),
-        // 3. POLITICAL_VIOLENCE — MODERATE — 3 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            62,
-            loc,
-            d(13),
-            "বিরোধী কর্মীদের ওপর হামলার অভিযোগ",
-            "সূত্র অনুযায়ী, রাজনৈতিক প্রতিদ্বন্দ্বী কর্মীদের ওপর হামলার অভিযোগ উঠেছে।",
-            "Alleged attack on rival political activists",
-            "Sources reported allegations of an attack on rival political activists.",
-            List.of("POLITICAL_VIOLENCE"),
-            3),
-        // 4. KILLING — HIGH — 4 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            85,
-            loc,
-            d(12),
-            "দলীয় সংশ্লিষ্ট ব্যক্তির হত্যার অভিযোগ",
-            "একাধিক সংবাদমাধ্যম একজন দলীয় সংশ্লিষ্ট ব্যক্তির হত্যার অভিযোগ প্রকাশ করেছে।",
-            "Alleged killing linked to local party figure",
-            "Multiple sources reported allegations of a killing linked to a local party figure.",
-            List.of("KILLING"),
-            4),
-        // 5. ABUSE_OF_POWER — MODERATE — 3 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            55,
-            loc,
-            d(11),
-            "প্রশাসনিক ক্ষমতার অপব্যবহারের অভিযোগ",
-            "সূত্র অনুযায়ী, প্রশাসনিক পর্যায়ে ক্ষমতার অপব্যবহারের অভিযোগ রয়েছে।",
-            "Alleged administrative abuse of power",
-            "Sources reported allegations of abuse of power at the administrative level.",
-            List.of("ABUSE_OF_POWER"),
-            3),
-        // 6. LAND_GRABBING — LOW — 2 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            30,
-            loc,
-            d(10),
-            "জমি দখলের অভিযোগ",
-            "সূত্র অনুযায়ী, রাজনৈতিক সংশ্লিষ্টতার সাথে জমি দখলের অভিযোগ রয়েছে।",
-            "Alleged land seizure with political links",
-            "Sources reported alleged land seizure involving politically connected individuals.",
-            List.of("LAND_GRABBING"),
-            2),
-        // 7. ARMED_THREAT_ATTACK — HIGH — 4 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            80,
-            loc,
-            d(9),
-            "সশস্ত্র হুমকির অভিযোগ",
-            "একাধিক সংবাদমাধ্যমে সশস্ত্র হুমকির ঘটনার অভিযোগ প্রকাশিত হয়েছে।",
-            "Alleged armed threats reported",
-            "Multiple news sources reported allegations of armed threats in the area.",
-            List.of("ARMED_THREAT_ATTACK"),
-            4),
-        // 8. MOB_VIOLENCE — MODERATE — 3 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            60,
-            loc,
-            d(8),
-            "গণপিটুনির অভিযোগ",
-            "সূত্র অনুযায়ী, দলীয় সংশ্লিষ্টতার সাথে গণপিটুনির ঘটনার অভিযোগ রয়েছে।",
-            "Alleged mob violence incident",
-            "Sources reported allegations of mob violence with reported political links.",
-            List.of("MOB_VIOLENCE"),
-            3),
-        // 9. INTIMIDATION — LOW — 2 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            25,
-            loc,
-            d(7),
-            "হুমকি ও ভয়ভীতির অভিযোগ",
-            "সূত্র অনুযায়ী, রাজনৈতিক উদ্দেশ্যে হুমকি ও ভয়ভীতির অভিযোগ রয়েছে।",
-            "Alleged politically motivated threats",
-            "Sources reported allegations of threats and intimidation with alleged political"
-                + " motives.",
-            List.of("INTIMIDATION"),
-            2),
-        // 10. EXTORTION — HIGH — 3 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            75,
-            loc,
-            d(6),
-            "ব্যবসায়ীদের কাছ থেকে চাঁদাবাজির অভিযোগ",
-            "সূত্র অনুযায়ী, স্থানীয় ব্যবসায়ীদের কাছ থেকে চাঁদাবাজির অভিযোগ উঠেছে।",
-            "Alleged extortion targeting local traders",
-            "Sources reported allegations of extortion targeting local traders.",
-            List.of("EXTORTION"),
-            3),
-        // 11. SEXUAL_VIOLENCE — HIGH — 5 sources → shows "+2 more"
-        row(
+        incident(
             "GOVERNMENT",
             "AUTO_PUBLISHED",
             88,
-            loc,
-            d(5),
-            "যৌন সহিংসতার অভিযোগ",
-            "একাধিক সংবাদমাধ্যমে দলীয় সংশ্লিষ্টতার সাথে যৌন সহিংসতার অভিযোগ প্রকাশিত" + " হয়েছে।",
-            "Alleged sexual violence with party links",
-            "Multiple news outlets reported allegations of sexual violence involving a"
-                + " party-affiliated individual.",
-            List.of("SEXUAL_VIOLENCE"),
-            5),
-        // 12. ABDUCTION_CONFINEMENT — MODERATE — 3 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            65,
-            loc,
-            d(4),
-            "অপহরণ ও আটকের অভিযোগ",
-            "সূত্র অনুযায়ী, রাজনৈতিক উদ্দেশ্যে অপহরণ ও অবৈধ আটকের অভিযোগ রয়েছে।",
-            "Alleged abduction and unlawful confinement",
-            "Sources reported allegations of abduction and unlawful confinement with alleged"
-                + " political motives.",
-            List.of("ABDUCTION_CONFINEMENT"),
-            3),
-        // 13. ATTACK_ON_INSTITUTION — HIGH — 5 sources → shows "+2 more"
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            90,
-            loc,
-            d(3),
-            "শিক্ষা প্রতিষ্ঠানে হামলার অভিযোগ",
-            "একাধিক সংবাদমাধ্যমে রাজনৈতিক সংশ্লিষ্টতার সাথে একটি শিক্ষা প্রতিষ্ঠানে"
-                + " হামলার অভিযোগ প্রকাশিত হয়েছে।",
-            "Alleged attack on educational institution",
-            "Multiple sources reported allegations of an attack on an educational institution"
-                + " with reported political links.",
-            List.of("ATTACK_ON_INSTITUTION"),
-            5),
-        // 14. COMMUNAL_RELIGIOUS_VIOLENCE — MODERATE — 3 sources
-        row(
+            "HIGH",
+            dhaka,
+            "Mirpur, Dhaka",
+            LocalDate.of(2026, 3, 18),
+            "সরকার-সংশ্লিষ্ট নেতার বিরুদ্ধে চাঁদাবাজির অভিযোগ",
+            "একাধিক উৎসের প্রতিবেদনে ঢাকায় সরকার-সংশ্লিষ্ট একজন স্থানীয় নেতার বিরুদ্ধে"
+                + " ব্যবসায়ীদের কাছ থেকে অর্থ দাবির অভিযোগ উঠে এসেছে।",
+            "Government-linked leader accused of extortion",
+            "Multiple sources reported allegations that a government-linked local leader in"
+                + " Dhaka demanded payments from traders.",
+            List.of("EXTORTION", "ABUSE_OF_POWER"),
+            List.of("Prothom Alo", "The Daily Star", "bdnews24", "Dhaka Tribune", "New Age")),
+        incident(
             "GOVERNMENT",
             "AUTO_PUBLISHED",
             58,
-            loc,
-            d(2),
-            "সাম্প্রদায়িক সহিংসতার অভিযোগ",
-            "সূত্র অনুযায়ী, রাজনৈতিক সংশ্লিষ্টতার সাথে সাম্প্রদায়িক সহিংসতার অভিযোগ" + " রয়েছে।",
-            "Alleged communal violence with political links",
-            "Sources reported allegations of communal violence with reported political links.",
-            List.of("COMMUNAL_RELIGIOUS_VIOLENCE"),
-            3),
-        // 15. CORRUPTION_BRIBERY + LAND_GRABBING — HIGH — 4 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            82,
-            loc,
-            d(1),
-            "দুর্নীতি ও জমি দখলের অভিযোগ",
-            "সূত্র অনুযায়ী, রাজনৈতিক সংশ্লিষ্ট ব্যক্তির বিরুদ্ধে দুর্নীতি ও জমি দখলের"
-                + " অভিযোগ রয়েছে।",
-            "Alleged corruption and land seizure",
-            "Sources reported allegations of corruption and land seizure involving a"
-                + " party-affiliated individual.",
-            List.of("CORRUPTION_BRIBERY", "LAND_GRABBING"),
-            4),
-        // 16. KILLING + POLITICAL_VIOLENCE — HIGH — 5 sources → shows "+2 more"
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            92,
-            loc,
-            LocalDate.of(2026, 2, 28),
-            "দ্বিতীয় হত্যার অভিযোগ",
-            "একাধিক সংবাদমাধ্যমে রাজনৈতিক সহিংসতায় হত্যার অভিযোগ প্রকাশিত হয়েছে।",
-            "Second alleged politically linked killing",
-            "Multiple sources reported allegations of a killing linked to political violence.",
-            List.of("KILLING", "POLITICAL_VIOLENCE"),
-            5),
-        // 17. ELECTION_VIOLENCE — HIGH — 3 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            70,
-            loc,
-            LocalDate.of(2026, 2, 27),
-            "নির্বাচনী সহিংসতার অভিযোগ",
-            "সূত্র অনুযায়ী, নির্বাচন প্রক্রিয়ায় বাধা দেওয়ার অভিযোগ রয়েছে।",
-            "Alleged election violence and obstruction",
-            "Sources reported allegations of violence and obstruction during the electoral"
-                + " process.",
-            List.of("ELECTION_VIOLENCE"),
-            3),
-        // 18. ABUSE_OF_POWER (police) — MODERATE — 2 sources
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            48,
-            loc,
-            LocalDate.of(2026, 2, 26),
-            "পুলিশের ক্ষমতার অপব্যবহারের অভিযোগ",
-            "সূত্র অনুযায়ী, পুলিশ প্রশাসনের পর্যায়ে ক্ষমতার অপব্যবহারের অভিযোগ উঠেছে।",
-            "Alleged police abuse of power",
-            "Sources reported allegations of abuse of power by law enforcement officials.",
+            "MODERATE",
+            dhaka,
+            "Dhaka",
+            LocalDate.of(2026, 3, 17),
+            "সরকারি কর্মকর্তার বিরুদ্ধে ক্ষমতার অপব্যবহারের অভিযোগ",
+            "সূত্র অনুযায়ী, একটি প্রশাসনিক অনুমোদন ঘিরে ক্ষমতার অপব্যবহারের অভিযোগ রয়েছে।",
+            "Official accused of administrative abuse of power",
+            "Sources reported allegations of administrative abuse of power around a permit"
+                + " approval.",
             List.of("ABUSE_OF_POWER"),
-            2),
-        // 19. EXTORTION + KILLING — HIGH — 4 sources
-        row(
-            "GOVERNMENT",
+            List.of("Prothom Alo", "bdnews24")),
+        incident(
+            "OPPOSITION",
             "AUTO_PUBLISHED",
             84,
-            loc,
-            LocalDate.of(2026, 2, 25),
-            "চাঁদাবাজি ও হত্যার অভিযোগ",
-            "সূত্র অনুযায়ী, চাঁদাবাজিতে বাধা দেওয়ায় হত্যার অভিযোগ রয়েছে।",
-            "Alleged extortion-linked killing",
-            "Sources reported allegations of a killing linked to resistance against extortion.",
-            List.of("EXTORTION", "KILLING"),
-            4),
-        // 20. MOB_VIOLENCE + COMMUNAL_RELIGIOUS_VIOLENCE — MODERATE — 3 sources
-        row(
+            "HIGH",
+            chattogram,
+            "Chattogram",
+            LocalDate.of(2026, 3, 16),
+            "বিরোধী দলের স্থানীয় নেতার বিরুদ্ধে সশস্ত্র হামলার অভিযোগ",
+            "একাধিক প্রতিবেদনে বিরোধী দলের স্থানীয় এক নেতার বিরুদ্ধে সশস্ত্র হামলায়"
+                + " জড়িত থাকার অভিযোগ প্রকাশিত হয়েছে।",
+            "Opposition local leader accused in armed attack",
+            "Multiple reports alleged that a local Opposition leader was involved in an armed"
+                + " attack.",
+            List.of("ARMED_THREAT_ATTACK", "POLITICAL_VIOLENCE"),
+            List.of("The Daily Star", "Dhaka Tribune", "New Age", "bdnews24")),
+        incident(
             "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            68,
-            loc,
-            LocalDate.of(2026, 2, 24),
-            "দ্বিতীয় গণপিটুনির অভিযোগ",
-            "সূত্র অনুযায়ী, সাম্প্রদায়িক উস্কানিতে গণপিটুনির অভিযোগ রয়েছে।",
-            "Second alleged mob attack with communal links",
-            "Sources reported allegations of a mob attack with reported communal incitement.",
-            List.of("MOB_VIOLENCE", "COMMUNAL_RELIGIOUS_VIOLENCE"),
-            3),
-        // 21. DRUG_ARMS_CRIME — LOW — 2 sources (extra for pagination)
-        row(
-            "GOVERNMENT",
-            "AUTO_PUBLISHED",
-            38,
-            loc,
-            LocalDate.of(2026, 2, 23),
-            "অবৈধ অস্ত্র সংশ্লিষ্ট অভিযোগ",
-            "সূত্র অনুযায়ী, রাজনৈতিক সংশ্লিষ্টতার সাথে অবৈধ অস্ত্র ব্যবহারের অভিযোগ" + " রয়েছে।",
-            "Alleged illegal arms with political links",
-            "Sources reported allegations of illegal arms use with reported political links.",
-            List.of("DRUG_ARMS_CRIME"),
-            2));
-  }
-
-  private List<SeedRow> oppPublished(UUID loc) {
-    return List.of(
-        // 22. POLITICAL_VIOLENCE — HIGH — 4 sources
-        row(
+            "MANUALLY_PUBLISHED",
+            76,
+            "HIGH",
+            dhaka,
+            "Dhaka",
+            LocalDate.of(2026, 3, 15),
+            "বাংলা-শুধু অনুবাদসহ জমি দখলের অভিযোগ",
+            "এই ঘটনাটির ইংরেজি অনুবাদ এখনো প্রস্তুত নয়, তাই ইংরেজি অনুরোধে বাংলা পাঠ"
+                + " দেখানো হবে।",
+            null,
+            null,
+            List.of("LAND_GRABBING"),
+            List.of("Prothom Alo", "bdnews24", "Dhaka Tribune")),
+        incident(
             "OPPOSITION",
             "AUTO_PUBLISHED",
-            75,
-            loc,
-            d(15),
-            "বিরোধী দলের বিরুদ্ধে হামলার অভিযোগ",
-            "সূত্র অনুযায়ী, বিরোধী দলের সাথে সংশ্লিষ্ট একজন ব্যক্তি হামলার সাথে জড়িত"
-                + " বলে অভিযোগ রয়েছে।",
-            "Alleged attack linked to Opposition figure",
-            "Sources reported allegations that an Opposition-linked individual was involved in"
-                + " an attack.",
-            List.of("POLITICAL_VIOLENCE"),
-            4),
-        // 23. KILLING — HIGH — 5 sources → shows "+2 more"
-        row(
+            79,
+            "HIGH",
+            null,
+            null,
+            LocalDate.of(2026, 3, 14),
+            "জেলা অনির্দিষ্ট রেখে বিরোধী সংশ্লিষ্ট দুর্নীতির অভিযোগ",
+            "প্রতিবেদনগুলোতে জেলা স্পষ্ট নয়, তবে বিরোধী-সংশ্লিষ্ট ব্যক্তির বিরুদ্ধে"
+                + " দুর্নীতির অভিযোগ রয়েছে।",
+            "Opposition-linked corruption allegation with missing district",
+            "Reports did not identify a district, but described corruption allegations involving"
+                + " an Opposition-linked figure.",
+            List.of("CORRUPTION_BRIBERY"),
+            List.of("The Daily Star", "New Age", "bdnews24")),
+        incident(
+            "GOVERNMENT",
+            "AUTO_PUBLISHED",
+            82,
+            "HIGH",
+            dhaka,
+            "Dhaka",
+            LocalDate.of(2026, 3, 13),
+            "অস্বাভাবিক দীর্ঘ শিরোনামসহ শিক্ষা প্রতিষ্ঠানে হামলা, ভয়ভীতি প্রদর্শন ও"
+                + " রাজনৈতিক প্রভাব খাটানোর অভিযোগ যা কার্ডের লেখার সীমা পরীক্ষা করে",
+            "একাধিক উৎসের প্রতিবেদনে একটি শিক্ষা প্রতিষ্ঠানে হামলা ও ভয়ভীতি প্রদর্শনের"
+                + " অভিযোগ রয়েছে।",
+            "Very long title alleging attack on an educational institution, intimidation, and"
+                + " political pressure to test card wrapping behavior",
+            "Multiple sources reported allegations of an attack and intimidation at an"
+                + " educational institution.",
+            List.of("ATTACK_ON_INSTITUTION", "INTIMIDATION", "POLITICAL_VIOLENCE"),
+            List.of("Prothom Alo", "The Daily Star", "bdnews24", "Dhaka Tribune", "New Age")),
+        incident(
             "OPPOSITION",
             "MANUALLY_PUBLISHED",
-            82,
-            loc,
-            d(12),
-            "বিরোধী দলের নেতার হত্যার অভিযোগ",
-            "একাধিক সংবাদমাধ্যমে বিরোধী দলের একজন স্থানীয় নেতার হত্যার অভিযোগ প্রকাশিত"
-                + " হয়েছে।",
-            "Alleged killing of Opposition local leader",
-            "Multiple news outlets reported allegations of the killing of a local Opposition"
-                + " leader.",
-            List.of("KILLING"),
-            5),
-        // 24. EXTORTION — MODERATE — 2 sources
-        row(
-            "OPPOSITION",
-            "AUTO_PUBLISHED",
-            45,
-            loc,
-            d(9),
-            "বিরোধী দলের চাঁদাবাজির অভিযোগ",
-            "সূত্র অনুযায়ী, বিরোধী দলের সংশ্লিষ্ট ব্যক্তির বিরুদ্ধে চাঁদাবাজির অভিযোগ"
-                + " রয়েছে।",
-            "Opposition figure alleged to extort",
-            "Sources reported allegations of extortion by an Opposition-affiliated figure.",
-            List.of("EXTORTION"),
-            2),
-        // 25. CORRUPTION_BRIBERY — HIGH — 3 sources
-        row(
-            "OPPOSITION",
-            "AUTO_PUBLISHED",
-            70,
-            loc,
-            d(6),
-            "বিরোধী সংশ্লিষ্ট দুর্নীতির অভিযোগ",
-            "সূত্র অনুযায়ী, বিরোধী দলের সাথে সংশ্লিষ্ট ব্যক্তির বিরুদ্ধে দুর্নীতির"
-                + " অভিযোগ রয়েছে।",
-            "Alleged corruption by Opposition-linked figure",
-            "Sources reported allegations of corruption by an Opposition-linked individual.",
-            List.of("CORRUPTION_BRIBERY"),
-            3),
-        // 26. ARMED_THREAT_ATTACK — HIGH — 4 sources
-        row(
-            "OPPOSITION",
-            "AUTO_PUBLISHED",
-            88,
-            loc,
-            d(3),
-            "সশস্ত্র হামলার অভিযোগ",
-            "একাধিক সংবাদমাধ্যমে বিরোধী দলের সাথে সংশ্লিষ্ট গোষ্ঠীর সশস্ত্র হামলার"
-                + " অভিযোগ প্রকাশিত হয়েছে।",
-            "Alleged armed attack by Opposition-linked group",
-            "Multiple sources reported allegations of an armed attack by an Opposition-linked"
-                + " group.",
-            List.of("ARMED_THREAT_ATTACK"),
-            4));
-  }
-
-  private List<SeedRow> nonPublic(UUID loc) {
-    return List.of(
-        // PENDING_REVIEW — GOVERNMENT — must not appear in public feed
-        row(
+            63,
+            "MODERATE",
+            chattogram,
+            "Chattogram",
+            LocalDate.of(2026, 3, 12),
+            "বিরোধী দলের বিরুদ্ধে নির্বাচনী বাধার অভিযোগ",
+            "সূত্র অনুযায়ী, ভোটকেন্দ্রে বাধা ও ভয়ভীতি প্রদর্শনের অভিযোগ রয়েছে।",
+            "Opposition accused of election obstruction",
+            "Sources reported allegations of obstruction and intimidation around polling.",
+            List.of("ELECTION_VIOLENCE", "INTIMIDATION"),
+            List.of("Dhaka Tribune", "New Age")),
+        incident(
             "GOVERNMENT",
-            "PENDING_REVIEW",
-            35,
-            loc,
-            d(16),
-            "পর্যালোচনাধীন ঘটনা (সরকার)",
-            "এই ঘটনাটি পর্যালোচনার অপেক্ষায় রয়েছে এবং সর্বজনীন ফিডে দৃশ্যমান নয়।",
-            "Pending review — Government",
-            "This incident is awaiting review and must not appear in the public feed.",
-            List.of("EXTORTION"),
-            2),
-        // PENDING_REVIEW — UNKNOWN actor — must not appear
-        row(
-            "UNKNOWN",
-            "PENDING_REVIEW",
-            20,
-            loc,
-            d(16),
-            "অজ্ঞাত অভিনেতার বিরুদ্ধে অভিযোগ",
-            "অভিনেতার পরিচয় নিশ্চিত করা যায়নি।",
-            "Allegation with unidentified actor",
-            "Actor could not be identified — must not appear in the public feed.",
+            "AUTO_PUBLISHED",
+            71,
+            "HIGH",
+            dhaka,
+            "Dhaka",
+            LocalDate.of(2026, 3, 11),
+            "ইংরেজি প্রতিবেদনের জন্য দ্বিভাষিক সহিংসতার অভিযোগ",
+            "বাংলা সারসংক্ষেপসহ ইংরেজি উৎসভিত্তিক একটি অভিযোগ।",
+            "English-source political violence allegation",
+            "An English-source incident with a complete Bangla summary for bilingual feed"
+                + " testing.",
             List.of("POLITICAL_VIOLENCE"),
-            2),
-        // REJECTED — GOVERNMENT — must not appear
-        row(
+            List.of("The Daily Star", "Dhaka Tribune", "New Age")),
+        incident(
             "GOVERNMENT",
-            "REJECTED",
-            15,
-            loc,
-            d(17),
-            "প্রত্যাখ্যাত ঘটনা",
-            "এই ঘটনাটি সম্পাদকীয় পর্যালোচনায় প্রত্যাখ্যান করা হয়েছে।",
-            "Rejected incident",
-            "This incident was rejected during editorial review — must not appear in the public"
-                + " feed.",
-            List.of("INTIMIDATION"),
-            2),
-        // ARCHIVED — OPPOSITION — must not appear
-        row(
-            "OPPOSITION",
-            "ARCHIVED",
-            72,
-            loc,
-            d(17),
-            "সংরক্ষণাগারে নেওয়া ঘটনা",
-            "এই ঘটনাটি সক্রিয় ফিড থেকে সরানো হয়েছে।",
-            "Archived incident",
-            "This incident was removed from the active feed — must not appear publicly.",
-            List.of("KILLING"),
-            3),
-        // PENDING_REVIEW — OPPOSITION — must not appear
-        row(
-            "OPPOSITION",
             "PENDING_REVIEW",
             42,
-            loc,
-            d(18),
-            "পর্যালোচনাধীন বিরোধী দলের ঘটনা",
-            "এই ঘটনাটি পর্যালোচনার অপেক্ষায় রয়েছে।",
-            "Pending review — Opposition",
-            "This incident is awaiting review — must not appear in the public feed.",
-            List.of("CORRUPTION_BRIBERY"),
-            2));
+            "LOW",
+            dhaka,
+            "Dhaka",
+            LocalDate.of(2026, 3, 10),
+            "পর্যালোচনাধীন অভিযোগ",
+            "এই ঘটনাটি মানব-পর্যালোচনার অপেক্ষায় থাকবে এবং জনসম্মুখে প্রকাশিত হবে না।",
+            "Pending review incident",
+            "This incident should remain internal and must not appear in the public feed.",
+            List.of("EXTORTION"),
+            List.of("Prothom Alo", "bdnews24")));
   }
 
-  // ---- Helpers ----
+  private void insertIncident(SeedIncident row, Map<String, UUID> publishers) {
+    UUID incidentId = UUID.randomUUID();
+    Timestamp now = Timestamp.from(Instant.now());
+    int sourceCount = row.publisherNames().size();
 
-  private void insertRows(List<SeedRow> rows, List<UUID> pubs) {
-    for (SeedRow r : rows) {
-      UUID id = UUID.randomUUID();
-      Timestamp now = Timestamp.from(Instant.now());
-      int pubCount = Math.min(r.numSources(), pubs.size());
+    jdbc.update(
+        "insert into incidents"
+            + " (id, actor_role, incident_date, location_id, extracted_location_text,"
+            + " confidence_score, confidence_level, political_accountability_link,"
+            + " extraction_confidence, status, source_count, independent_publisher_count,"
+            + " created_at, updated_at)"
+            + " values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        incidentId,
+        row.actorRole(),
+        row.date(),
+        row.locationId(),
+        row.extractedLocationText(),
+        BigDecimal.valueOf(row.score()),
+        row.confidenceLevel(),
+        true,
+        BigDecimal.valueOf(0.90),
+        row.status(),
+        sourceCount,
+        sourceCount,
+        now,
+        now);
 
+    insertTranslation(incidentId, "bn", row.bnTitle(), row.bnSummary());
+    if (row.enTitle() != null && row.enSummary() != null) {
+      insertTranslation(incidentId, "en", row.enTitle(), row.enSummary());
+    }
+
+    for (String category : row.categories()) {
       jdbc.update(
-          "INSERT INTO incidents"
-              + " (id, actor_role, incident_date, location_id, extracted_location_text,"
-              + "  confidence_score, confidence_level, status, source_count,"
-              + "  independent_publisher_count, created_at, updated_at)"
-              + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-          id,
-          r.actorRole(),
-          r.date(),
-          r.locationId(),
-          "Mirpur, Dhaka",
-          new BigDecimal(r.score()),
-          scoreLabel(r.score()),
-          r.status(),
-          pubCount,
-          pubCount,
+          "insert into incident_categories (incident_id, category_code) values (?,?)",
+          incidentId,
+          category);
+    }
+
+    for (int index = 0; index < row.publisherNames().size(); index++) {
+      String publisherName = row.publisherNames().get(index);
+      UUID publisherId = publishers.get(publisherName);
+      String url = SOURCE_PREFIX + incidentId + "/source-" + (index + 1);
+      jdbc.update(
+          "insert into incident_sources"
+              + " (id, incident_id, publisher_id, source_url, canonical_url, source_title,"
+              + " relevant_excerpt, published_at, fetched_at, source_type, ai_relevance_score,"
+              + " created_at)"
+              + " values (?,?,?,?,?,?,?,?,?,?,?,?)",
+          UUID.randomUUID(),
+          incidentId,
+          publisherId,
+          url,
+          url,
+          row.enTitle() == null ? row.bnTitle() : row.enTitle(),
+          row.bnSummary(),
+          Timestamp.valueOf(row.date().atStartOfDay()),
           now,
+          "NEWSPAPER",
+          BigDecimal.valueOf(92),
           now);
-
-      jdbc.update(
-          "INSERT INTO incident_translations (incident_id, language_code, title, summary)"
-              + " VALUES (?,?,?,?)",
-          id,
-          "bn",
-          r.bnTitle(),
-          r.bnSummary());
-      jdbc.update(
-          "INSERT INTO incident_translations (incident_id, language_code, title, summary)"
-              + " VALUES (?,?,?,?)",
-          id,
-          "en",
-          r.enTitle(),
-          r.enSummary());
-
-      for (int i = 0; i < pubCount; i++) {
-        String url = "https://example.com/" + id + "/s" + i;
-        jdbc.update(
-            "INSERT INTO incident_sources"
-                + " (id, incident_id, publisher_id, source_url, canonical_url, source_title,"
-                + "  fetched_at, source_type, created_at)"
-                + " VALUES (?,?,?,?,?,?,?,?,?)",
-            UUID.randomUUID(),
-            id,
-            pubs.get(i),
-            url,
-            url,
-            r.enTitle() + " — Source " + (i + 1),
-            now, // fetched_at
-            "NEWSPAPER",
-            now);
-      }
-
-      for (String cat : r.categories()) {
-        jdbc.update(
-            "INSERT INTO incident_categories (incident_id, category_code) VALUES (?,?)", id, cat);
-      }
     }
   }
 
-  private UUID insertPublisher(String name, String domain, String homepageUrl) {
+  private void insertTranslation(
+      UUID incidentId, String languageCode, String title, String summary) {
+    jdbc.update(
+        "insert into incident_translations (incident_id, language_code, title, summary)"
+            + " values (?,?,?,?)",
+        incidentId,
+        languageCode,
+        title,
+        summary);
+  }
+
+  private UUID publisher(String name, String domain, String homepageUrl) {
+    List<UUID> ids =
+        jdbc.query(
+            "select id from publishers where domain = ? limit 1",
+            (rs, rowNum) -> rs.getObject("id", UUID.class),
+            domain);
+    if (!ids.isEmpty()) {
+      return ids.getFirst();
+    }
+
     UUID id = UUID.randomUUID();
     Timestamp now = Timestamp.from(Instant.now());
     jdbc.update(
-        "INSERT INTO publishers"
+        "insert into publishers"
             + " (id, name, type, domain, homepage_url, active, created_at, updated_at)"
-            + " VALUES (?,?,?,?,?,?,?,?)",
+            + " values (?,?,?,?,?,?,?,?)",
         id,
         name,
         "NEWSPAPER",
@@ -593,64 +322,60 @@ class StagingDataSeeder implements ApplicationRunner {
     return id;
   }
 
-  private UUID insertLocation() {
+  private UUID location(String division, String district, String upazila) {
     UUID id = UUID.randomUUID();
     jdbc.update(
-        "INSERT INTO locations (id, country, division, district, upazila) VALUES (?,?,?,?,?)",
+        "insert into locations (id, country, division, district, upazila) values (?,?,?,?,?)",
         id,
         "Bangladesh",
-        "Dhaka",
-        "Dhaka",
-        "Mirpur");
+        division,
+        district,
+        upazila);
     return id;
   }
 
-  private String scoreLabel(int score) {
-    if (score >= 70) return "Highly Corroborated";
-    if (score >= 40) return "Moderate Corroboration";
-    return "Low Corroboration";
-  }
-
-  private LocalDate d(int dayOfMarch) {
-    return LocalDate.of(2026, 3, dayOfMarch);
-  }
-
-  private SeedRow row(
+  private SeedIncident incident(
       String actorRole,
       String status,
       int score,
+      String confidenceLevel,
       UUID locationId,
+      String extractedLocationText,
       LocalDate date,
       String bnTitle,
       String bnSummary,
       String enTitle,
       String enSummary,
       List<String> categories,
-      int numSources) {
-    return new SeedRow(
+      List<String> publisherNames) {
+    return new SeedIncident(
         actorRole,
         status,
         score,
+        confidenceLevel,
         locationId,
+        extractedLocationText,
         date,
         bnTitle,
         bnSummary,
         enTitle,
         enSummary,
-        categories,
-        numSources);
+        new ArrayList<>(categories),
+        new ArrayList<>(publisherNames));
   }
 
-  private record SeedRow(
+  private record SeedIncident(
       String actorRole,
       String status,
       int score,
+      String confidenceLevel,
       UUID locationId,
+      String extractedLocationText,
       LocalDate date,
       String bnTitle,
       String bnSummary,
       String enTitle,
       String enSummary,
       List<String> categories,
-      int numSources) {}
+      List<String> publisherNames) {}
 }
