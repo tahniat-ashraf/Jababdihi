@@ -1,0 +1,22 @@
+name: jababdihi-prod
+
+services:
+  backend-api:
+    labels:
+      com.jababdihi.environment: production
+    environment:
+      SPRING_PROFILES_ACTIVE: api,prod
+
+  backend-worker:
+    labels:
+      com.jababdihi.environment: production
+    environment:
+      SPRING_PROFILES_ACTIVE: worker,prod
+
+volumes:
+  postgres-data:
+    name: jababdihi_prod_postgres
+  redis-data:
+    name: jababdihi_prod_redis
+  ollama-data:
+    name: jababdihi_prod_ollama
