@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/brand-mark";
 import { cn } from "@/lib/utils";
 
 type ActorRole = "GOVERNMENT" | "OPPOSITION";
-
 type LanguageCode = "bn" | "en";
 
 const actorOptions: Record<
@@ -28,15 +27,20 @@ const languageOptions: Array<{
   href: `/${LanguageCode}`;
   code: LanguageCode;
 }> = [
-  { label: "বাংলা", href: "/bn", code: "bn" },
-  { label: "English", href: "/en", code: "en" }
+  { label: "বাং", href: "/bn", code: "bn" },
+  { label: "EN", href: "/en", code: "en" }
 ];
+
+const wordmarkSubtitleByLang: Record<LanguageCode, string> = {
+  bn: "Public · evidence-first",
+  en: "জবাবদিহি"
+};
 
 export function TopNavigation() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const language: LanguageCode = pathname?.startsWith("/en") ? "en" : "bn";
-  const currentActor =
+  const currentActor: ActorRole =
     searchParams.get("actorRole") === "OPPOSITION"
       ? "OPPOSITION"
       : "GOVERNMENT";
@@ -44,86 +48,120 @@ export function TopNavigation() {
   function hrefForActor(actorRole: ActorRole) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("actorRole", actorRole);
-
     return `${pathname || "/bn"}?${params.toString()}`;
   }
 
   function hrefForLanguage(href: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("actorRole", currentActor);
-
     return `${href}?${params.toString()}`;
   }
 
   return (
-    <header className="border-b bg-background">
-      <div className="mx-auto flex min-h-16 w-full max-w-6xl flex-col gap-3 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-        <div className="flex items-center justify-between gap-4">
-          <Link href="/bn" className="text-lg font-semibold tracking-tight">
-            Jababdihi
-          </Link>
+    <header className="bg-background">
+      <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-6 lg:max-w-5xl lg:px-8">
+        {/* Masthead row */}
+        <div className="flex items-center justify-between gap-3">
           <Link
-            href="/admin"
-            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground lg:hidden"
+            href={`/${language}?actorRole=${currentActor}`}
+            className="flex items-center gap-2"
           >
-            Admin
+            <BrandMark size={26} className="text-foreground" />
+            <span className="font-serif text-[1.4rem] font-medium leading-none tracking-masthead text-foreground">
+              Jababdihi
+            </span>
+            <span
+              aria-hidden
+              className="hidden font-serif text-xs italic text-muted-foreground sm:inline"
+            >
+              {wordmarkSubtitleByLang[language]}
+            </span>
           </Link>
+
+          <nav className="flex items-center gap-3">
+            <div
+              aria-label="Language"
+              className="flex items-center gap-1 text-[11px] font-medium tracking-wide text-muted-foreground"
+            >
+              {languageOptions.map((option, i) => {
+                const active = option.code === language;
+                return (
+                  <span key={option.code} className="flex items-center gap-1">
+                    {i > 0 ? <span className="text-faint">·</span> : null}
+                    <Link
+                      href={hrefForLanguage(option.href)}
+                      className={cn(
+                        "tabular-nums transition-colors hover:text-foreground",
+                        active
+                          ? "font-semibold text-foreground"
+                          : "text-muted-foreground"
+                      )}
+                    >
+                      {option.label}
+                    </Link>
+                  </span>
+                );
+              })}
+            </div>
+            <Link
+              href="/admin"
+              className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Admin
+            </Link>
+          </nav>
         </div>
 
-        <nav className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
-          <div
-            aria-label="Actor role"
-            className="inline-flex w-full rounded-md border bg-muted p-1 sm:w-auto"
-          >
-            {actorOptions[language].map((option) => (
-              <Button
-                asChild
+        {/* Masthead double rule */}
+        <div className="mt-3 h-px bg-foreground/85" />
+        <div className="mt-[2px] h-[3px] border-t border-foreground" />
+
+        {/* Actor tabs */}
+        <div
+          aria-label="Actor role"
+          className="flex border-b border-border"
+        >
+          {actorOptions[language].map((option) => {
+            const active = currentActor === option.value;
+            const isGov = option.value === "GOVERNMENT";
+            return (
+              <Link
                 key={option.value}
-                size="sm"
-                variant={currentActor === option.value ? "default" : "ghost"}
+                href={hrefForActor(option.value)}
+                aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex-1 sm:flex-none",
-                  option.value === "GOVERNMENT" &&
-                    currentActor === option.value &&
-                    "bg-blue-600 hover:bg-blue-700",
-                  option.value === "OPPOSITION" &&
-                    currentActor === option.value &&
-                    "bg-red-600 hover:bg-red-700"
+                  "group relative flex-1 px-3 py-3 text-center text-sm transition-colors sm:flex-none sm:px-6",
+                  active
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground-soft"
                 )}
               >
-                <Link href={hrefForActor(option.value)}>{option.label}</Link>
-              </Button>
-            ))}
-          </div>
-
-          <div
-            aria-label="Language"
-            className="inline-flex w-full rounded-md border bg-muted p-1 sm:w-auto"
-          >
-            {languageOptions.map((option) => {
-              const active = pathname?.startsWith(option.href);
-
-              return (
-                <Button
-                  asChild
-                  key={option.code}
-                  size="sm"
-                  variant={active ? "secondary" : "ghost"}
-                  className="flex-1 sm:flex-none"
-                >
-                  <Link href={hrefForLanguage(option.href)}>{option.label}</Link>
-                </Button>
-              );
-            })}
-          </div>
-
-          <Link
-            href="/admin"
-            className="hidden text-sm font-medium text-muted-foreground transition-colors hover:text-foreground lg:inline-flex"
-          >
-            Admin
-          </Link>
-        </nav>
+                <span className="inline-flex items-center justify-center gap-2">
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-[1px]",
+                      isGov ? "bg-actor-gov" : "bg-actor-opp",
+                      !active && "opacity-50"
+                    )}
+                    aria-hidden
+                  />
+                  <span className={cn(active && "font-semibold")}>
+                    {option.label}
+                  </span>
+                </span>
+                {active ? (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute inset-x-0 -bottom-px h-[2px]",
+                      isGov ? "bg-actor-gov" : "bg-actor-opp"
+                    )}
+                  />
+                ) : null}
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </header>
   );
