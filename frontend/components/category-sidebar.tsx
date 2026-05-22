@@ -60,11 +60,11 @@ export function CategorySidebar({
           </button>
         </div>
       </div>
-      <div className="mt-3 grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
+      <div className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-1">
         {categories.map((category) => (
           <label
             className={cn(
-              "flex min-h-10 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm transition-colors",
+              "flex cursor-pointer items-center gap-2 rounded border px-2.5 py-1.5 text-xs transition-colors",
               selected.has(category.code)
                 ? "border-slate-900 bg-slate-50 text-foreground"
                 : "border-border text-muted-foreground hover:bg-muted"
@@ -73,7 +73,7 @@ export function CategorySidebar({
           >
             <input
               checked={selected.has(category.code)}
-              className="h-4 w-4 rounded border-input accent-slate-900"
+              className="h-3.5 w-3.5 rounded border-input accent-slate-900"
               onChange={() => toggleCategory(category.code)}
               type="checkbox"
             />

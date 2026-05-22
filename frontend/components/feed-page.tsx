@@ -214,7 +214,7 @@ export function FeedPage({ language }: FeedPageProps) {
   );
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[18rem_1fr]">
+    <div className="grid gap-4 lg:grid-cols-[14rem_1fr]">
       <CategorySidebar
         categories={categories}
         language={language}
@@ -255,7 +255,7 @@ export function FeedPage({ language }: FeedPageProps) {
           </div>
         ) : null}
 
-        <div className="grid gap-4">
+        <div className="grid gap-2">
           {incidents.map((incident) => (
             <IncidentCard
               incident={incident}
