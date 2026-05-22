@@ -2,23 +2,33 @@ package com.jababdihi.backend.taskqueue;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "processing_tasks")
 public class ProcessingTask {
   @Id @GeneratedValue private UUID id;
 
-  private String taskType;
+  @Enumerated(EnumType.STRING)
+  private ProcessingTaskType taskType;
 
+  @JdbcTypeCode(SqlTypes.JSON)
   @Column(columnDefinition = "jsonb")
   private String payload;
 
-  private String status;
+  @Enumerated(EnumType.STRING)
+  private ProcessingTaskStatus status;
+
   private int attemptCount;
   private int maxAttempts;
   private Instant availableAt;
@@ -30,15 +40,45 @@ public class ProcessingTask {
 
   protected ProcessingTask() {}
 
+  public ProcessingTask(ProcessingTaskType taskType, String payload, Instant availableAt) {
+    this.taskType = taskType;
+    this.payload = payload;
+    this.status = ProcessingTaskStatus.PENDING;
+    this.maxAttempts = TaskBackoffPolicy.DEFAULT_MAX_ATTEMPTS;
+    this.availableAt = availableAt;
+  }
+
+  @PrePersist
+  void prePersist() {
+    Instant now = Instant.now();
+    if (createdAt == null) {
+      createdAt = now;
+    }
+    if (updatedAt == null) {
+      updatedAt = now;
+    }
+    if (status == null) {
+      status = ProcessingTaskStatus.PENDING;
+    }
+    if (maxAttempts == 0) {
+      maxAttempts = TaskBackoffPolicy.DEFAULT_MAX_ATTEMPTS;
+    }
+  }
+
+  @PreUpdate
+  void preUpdate() {
+    updatedAt = Instant.now();
+  }
+
   public UUID getId() {
     return id;
   }
 
-  public String getTaskType() {
+  public ProcessingTaskType getTaskType() {
     return taskType;
   }
 
-  public void setTaskType(String taskType) {
+  public void setTaskType(ProcessingTaskType taskType) {
     this.taskType = taskType;
   }
 
@@ -50,11 +90,11 @@ public class ProcessingTask {
     this.payload = payload;
   }
 
-  public String getStatus() {
+  public ProcessingTaskStatus getStatus() {
     return status;
   }
 
-  public void setStatus(String status) {
+  public void setStatus(ProcessingTaskStatus status) {
     this.status = status;
   }
 

@@ -1,0 +1,10 @@
+package com.jababdihi.backend.taskqueue;
+
+public enum ProcessingTaskType {
+  CRAWL_SOURCE_DAY,
+  EXTRACT_INCIDENT,
+  GENERATE_EMBEDDING,
+  CORRELATE_INCIDENT,
+  GENERATE_TRANSLATIONS,
+  RECOMPUTE_CONFIDENCE
+}
