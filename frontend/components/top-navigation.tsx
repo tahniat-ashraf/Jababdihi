@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { BrandMark } from "@/components/brand-mark";
+import { UI_COPY } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 type ActorRole = "GOVERNMENT" | "OPPOSITION";
@@ -32,8 +33,13 @@ const languageOptions: Array<{
 ];
 
 const wordmarkSubtitleByLang: Record<LanguageCode, string> = {
-  bn: "Public · evidence-first",
-  en: "জবাবদিহি"
+  bn: "জনস্বার্থ · উৎসনির্ভর",
+  en: "Public · evidence-first"
+};
+
+const adminLabel: Record<LanguageCode, string> = {
+  bn: "অ্যাডমিন",
+  en: "Admin"
 };
 
 export function TopNavigation() {
@@ -104,10 +110,16 @@ export function TopNavigation() {
               })}
             </div>
             <Link
+              href={`/${language}/methodology`}
+              className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {UI_COPY[language].methodology}
+            </Link>
+            <Link
               href="/admin"
               className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground"
             >
-              Admin
+              {adminLabel[language]}
             </Link>
           </nav>
         </div>

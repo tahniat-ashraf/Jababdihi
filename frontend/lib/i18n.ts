@@ -23,11 +23,15 @@ const CATEGORIES: Record<string, Record<LanguageCode, string>> = {
     en: "Communal / Religious Violence",
     bn: "সাম্প্রদায়িক / ধর্মীয় সহিংসতা"
   },
+  DRUG_ARMS_CRIME: { en: "Drug / Arms Crime", bn: "মাদক / অস্ত্র অপরাধ" },
   ELECTION_VIOLENCE: { en: "Election Violence", bn: "নির্বাচনী সহিংসতা" },
-  DRUG_ARMS_CRIME: { en: "Drug / Arms Crime", bn: "মাদক / অস্ত্র অপরাধ" }
+  ROBBERY_MUGGING: { en: "Robbery / Mugging", bn: "ডাকাতি / ছিনতাই" }
 };
 
 const CONFIDENCE: Record<string, Record<LanguageCode, string>> = {
+  HIGH: { en: "Highly Corroborated", bn: "উচ্চ সমর্থন" },
+  MODERATE: { en: "Moderate Corroboration", bn: "মধ্যম সমর্থন" },
+  LOW: { en: "Limited Corroboration", bn: "সীমিত সমর্থন" },
   "Highly Corroborated": { en: "Highly Corroborated", bn: "উচ্চ সমর্থিত" },
   Corroborated: { en: "Corroborated", bn: "সমর্থিত" },
   "Moderate Corroboration": { en: "Moderate Corroboration", bn: "মধ্যম সমর্থন" },
@@ -38,15 +42,42 @@ const CONFIDENCE: Record<string, Record<LanguageCode, string>> = {
 const PUBLISHERS: Record<string, string> = {
   "Prothom Alo": "প্রথম আলো",
   bdnews24: "বিডিনিউজ২৪",
-  "Dhaka Tribune": "ঢাকা ট্রিবিউন"
+  "Dhaka Tribune": "ঢাকা ট্রিবিউন",
+  "The Daily Star": "দ্য ডেইলি স্টার",
+  "New Age": "নিউ এজ",
+  "The Business Standard": "দ্য বিজনেস স্ট্যান্ডার্ড",
+  Jugantor: "যুগান্তর",
+  "Kaler Kantho": "কালের কণ্ঠ",
+  Samakal: "সমকাল",
+  Ittefaq: "ইত্তেফাক"
 };
 
 export const UI_COPY: Record<
   LanguageCode,
-  { confidence: string; dateFallback: string }
+  {
+    confidence: string;
+    dateFallback: string;
+    footerDisclaimer: string;
+    methodology: string;
+    legal: string;
+  }
 > = {
-  en: { confidence: "Confidence", dateFallback: "No date" },
-  bn: { confidence: "আস্থা", dateFallback: "তারিখ নেই" }
+  en: {
+    confidence: "Confidence",
+    dateFallback: "No date",
+    footerDisclaimer:
+      "Jababdihi aggregates public reporting from listed sources. Confidence reflects source corroboration, not legal proof, guilt, or a court finding.",
+    methodology: "Methodology",
+    legal: "Legal"
+  },
+  bn: {
+    confidence: "আস্থা",
+    dateFallback: "তারিখ নেই",
+    footerDisclaimer:
+      "জবাবদিহি তালিকাভুক্ত উৎসের প্রকাশিত প্রতিবেদন একত্র করে। আস্থা স্কোর উৎস-সমর্থনের শক্তি বোঝায়; এটি আইনি প্রমাণ, দোষ বা আদালতের সিদ্ধান্ত নয়।",
+    methodology: "পদ্ধতি",
+    legal: "আইনি নোট"
+  }
 };
 
 export function localizeActorRole(code: string, language: LanguageCode): string {
