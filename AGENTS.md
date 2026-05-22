@@ -135,6 +135,26 @@ jababdihi/
 - Staging and production must use the same Docker images, service topology, Flyway migrations, API contracts, and AI integration shape.
 - Staging and production must use separate databases.
 
+## First-Time Setup (after cloning)
+
+Run once to install the local secret-scanning git hooks:
+
+```bash
+./infra/scripts/setup-git-hooks.sh
+```
+
+This installs a `pre-commit` hook and a `pre-push` hook, both backed by
+[gitleaks](https://github.com/gitleaks/gitleaks). Install gitleaks first:
+
+```bash
+brew install gitleaks   # macOS
+# or download from https://github.com/gitleaks/gitleaks/releases
+```
+
+The hooks are non-blocking if gitleaks is not installed (a warning is printed
+instead). The CI `secret-scan` job is the hard gate — it runs on every push
+and pull request and will fail the build if a secret is detected.
+
 ## Checks Before Finishing a Task
 
 Run the relevant checks when possible.

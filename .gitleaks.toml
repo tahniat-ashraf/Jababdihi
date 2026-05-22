@@ -1,0 +1,72 @@
+title = "Jababdihi secret scanner"
+
+# Extend gitleaks' built-in ruleset.
+# Default rules cover: AWS keys, GitHub tokens, private keys, JWTs,
+# Stripe/Twilio/Slack tokens, generic high-entropy strings, and more.
+[extend]
+useDefault = true
+
+# ── Global allowlist ──────────────────────────────────────────────────────────
+# Values / paths that are intentionally committed and are NOT real secrets.
+[allowlist]
+description = "Known-safe dev placeholders, template markers, and example files"
+regexes = [
+  # Template / placeholder markers — anyone using these as a real secret
+  # has a much bigger problem than this scanner.
+  '''REPLACE_WITH_''',
+  '''<YOUR_''',
+  '''<REPLACE_''',
+  '''<IMAGE_TAG>''',
+  # Known local-dev defaults — never used in a deployed environment
+  '''dev-api-key''',
+  '''jababdihi_dev_password''',
+]
+# Entire files that are meant to show schema, not hold real values.
+paths = [
+  # .env.example, .env.staging.example, .env.prod.example, etc.
+  '''(^|/)\.env\.?.*\.example$''',
+  # infra/backend.env.example
+  '''backend\.env\.example$''',
+  # Local Docker Compose — uses ${VAR:-PLACEHOLDER} syntax throughout
+  '''docker-compose\.local\.yml$''',
+  # Operations runbook — shows env var names without values as documentation
+  '''operations\.md$''',
+]
+
+# ── Custom rules ──────────────────────────────────────────────────────────────
+
+# Catch an actual .env.staging / .env.prod / .env.local being committed.
+# The .example variants are already allowed by the global path allowlist.
+[[rules]]
+id          = "committed-env-file"
+description = "Actual .env file committed — only .example files belong in git"
+path        = '''(^|/)(\.env\.(staging|prod|production|local)|\.env)$'''
+regex       = '''.+'''
+tags        = ["secret", "env-file"]
+
+# Telegram bot tokens  (format: <bot_id>:<random_string>)
+[[rules]]
+id          = "telegram-bot-token"
+description = "Telegram Bot API token"
+regex       = '''\b\d{8,12}:[A-Za-z0-9_-]{35}\b'''
+tags        = ["secret", "telegram"]
+[rules.allowlist]
+regexes = ['''REPLACE_WITH_''', '''<REPLACE_''']
+
+# Sensitive env-var assignments with non-placeholder values.
+# Uses secretGroup = 2 so allowlists are matched against the VALUE, not the
+# variable name.  Uses [ \t]* (not \s*) to avoid cross-line matches in docs.
+[[rules]]
+id          = "sensitive-env-assignment"
+description = "Sensitive environment variable assigned a real (non-placeholder) value"
+regex       = '''(?i)(POSTGRES_PASSWORD|APP_ADMIN_API_KEY|SPRING_DATASOURCE_PASSWORD|S3_SECRET_ACCESS_KEY|BACKUP_ENCRYPTION_PASSPHRASE|S3_ACCESS_KEY_ID|TELEGRAM_BOT_TOKEN|TELEGRAM_CHAT_ID)[ \t]*[=:][ \t]*([^\s${}'"<]{6,})'''
+secretGroup = 2
+tags        = ["secret", "env-var"]
+[rules.allowlist]
+regexes = [
+  '''REPLACE_WITH_''',
+  '''<REPLACE_''',
+  '''<YOUR_''',
+  '''dev-api-key''',
+  '''jababdihi_dev_password''',
+]
