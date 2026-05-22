@@ -58,6 +58,7 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       APP_ADMIN_API_KEY: ${APP_ADMIN_API_KEY}
+      INGESTION_ITEM_LIMIT: ${INGESTION_ITEM_LIMIT:--1}
       OLLAMA_BASE_URL: http://ollama:11434
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:

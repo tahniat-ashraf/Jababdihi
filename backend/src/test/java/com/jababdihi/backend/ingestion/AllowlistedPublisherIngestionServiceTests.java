@@ -16,8 +16,10 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class AllowlistedPublisherIngestionServiceTests {
   private static final Instant NOW = Instant.parse("2026-05-22T12:00:00Z");
@@ -116,6 +118,55 @@ class AllowlistedPublisherIngestionServiceTests {
 
     assertThat(result).isEqualTo(new IngestionResult(2, 0, 2));
     verify(rawContentRepository, never()).save(any());
+  }
+
+  @Test
+  void ingestCurrentPublisherProcessesOldestItemsAfterCursorUntilLimit() {
+    Publisher publisher = publisher();
+    UUID rawContentId = UUID.randomUUID();
+    when(rawContentRepository.save(any(RawContent.class)))
+        .thenAnswer(
+            invocation -> {
+              RawContent rawContent = invocation.getArgument(0);
+              ReflectionTestUtils.setField(rawContent, "id", rawContentId);
+              return rawContent;
+            });
+    FeedClient feedClient =
+        ignored ->
+            List.of(
+                new FeedItem(
+                    "https://www.prothomalo.com/bangladesh/newer",
+                    "Newer story",
+                    Optional.of(Instant.parse("2026-05-22T10:00:00Z")),
+                    "Newer extracted text"),
+                new FeedItem(
+                    "https://www.prothomalo.com/bangladesh/old",
+                    "Old story",
+                    Optional.of(Instant.parse("2026-05-22T08:00:00Z")),
+                    "Old extracted text"),
+                new FeedItem(
+                    "https://www.prothomalo.com/bangladesh/older",
+                    "Older story",
+                    Optional.of(Instant.parse("2026-05-22T07:00:00Z")),
+                    "Older extracted text"));
+    AllowlistedPublisherIngestionService service =
+        service(feedClient, mock(DirectArticleScraper.class));
+
+    CurrentPublisherIngestionResult result =
+        service.ingestCurrentPublisher(
+            publisher,
+            publisherConfig(),
+            Instant.parse("2026-05-22T07:30:00Z"),
+            1,
+            Instant.parse("2026-05-22T13:00:00Z"));
+
+    assertThat(result.attemptedItems()).isEqualTo(1);
+    assertThat(result.storedItems()).isEqualTo(1);
+    assertThat(result.rawContentIds()).containsExactly(rawContentId);
+    assertThat(result.cursorPublishedAt()).contains(Instant.parse("2026-05-22T08:00:00Z"));
+    ArgumentCaptor<RawContent> rawContentCaptor = ArgumentCaptor.forClass(RawContent.class);
+    verify(rawContentRepository).save(rawContentCaptor.capture());
+    assertThat(rawContentCaptor.getValue().getSourceTitle()).isEqualTo("Old story");
   }
 
   private AllowlistedPublisherIngestionService service(

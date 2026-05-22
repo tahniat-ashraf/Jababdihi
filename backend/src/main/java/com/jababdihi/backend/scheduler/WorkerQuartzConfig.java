@@ -15,37 +15,37 @@ import org.springframework.context.annotation.Profile;
 public class WorkerQuartzConfig {
 
   @Bean
-  JobDetail hourlyBackfillJobDetail() {
-    return JobBuilder.newJob(HourlyBackfillJob.class)
-        .withIdentity("hourlyBackfillJob", "ingestion")
+  JobDetail currentIngestionJobDetail() {
+    return JobBuilder.newJob(CurrentIngestionJob.class)
+        .withIdentity("currentIngestionJob", "ingestion")
         .storeDurably()
         .build();
   }
 
   @Bean
-  Trigger hourlyBackfillTrigger(JobDetail hourlyBackfillJobDetail) {
+  Trigger currentIngestionTrigger(JobDetail currentIngestionJobDetail) {
     return TriggerBuilder.newTrigger()
-        .forJob(hourlyBackfillJobDetail)
-        .withIdentity("hourlyBackfillTrigger", "ingestion")
+        .forJob(currentIngestionJobDetail)
+        .withIdentity("currentIngestionTrigger", "ingestion")
         .withSchedule(CronScheduleBuilder.cronSchedule("0 0 * * * ?"))
         .build();
   }
 
   @Bean
-  JobDetail dailyRollingIngestionJobDetail() {
-    return JobBuilder.newJob(DailyRollingIngestionJob.class)
-        .withIdentity("dailyRollingIngestionJob", "ingestion")
+  JobDetail backfillJobDetail() {
+    return JobBuilder.newJob(HourlyBackfillJob.class)
+        .withIdentity("backfillJob", "ingestion")
         .storeDurably()
         .build();
   }
 
   @Bean
-  Trigger dailyRollingIngestionTrigger(JobDetail dailyRollingIngestionJobDetail) {
+  Trigger backfillTrigger(JobDetail backfillJobDetail) {
     return TriggerBuilder.newTrigger()
-        .forJob(dailyRollingIngestionJobDetail)
-        .withIdentity("dailyRollingIngestionTrigger", "ingestion")
+        .forJob(backfillJobDetail)
+        .withIdentity("backfillTrigger", "ingestion")
         .withSchedule(
-            CronScheduleBuilder.cronSchedule("0 0 2 * * ?")
+            CronScheduleBuilder.cronSchedule("0 0 */2 * * ?")
                 .inTimeZone(TimeZone.getTimeZone(ScheduledTaskEnqueuer.DHAKA_ZONE)))
         .build();
   }

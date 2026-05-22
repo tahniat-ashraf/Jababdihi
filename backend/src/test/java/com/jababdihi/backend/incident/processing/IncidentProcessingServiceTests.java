@@ -98,6 +98,40 @@ class IncidentProcessingServiceTests {
     verify(incidentRepository).save(existingIncident);
   }
 
+  @Test
+  void processRawContentAutoPublishesLowConfidenceSingleSourceIncidentForMvp() {
+    UUID rawContentId = UUID.randomUUID();
+    RawContent rawContent = rawContent(rawContentId);
+    IncidentCandidate candidate =
+        new IncidentCandidate(
+            "Local leader accused in reported incident",
+            "summary",
+            ActorRole.GOVERNMENT,
+            CategoryCode.ABUSE_OF_POWER,
+            false,
+            LocalDate.of(2026, 5, 22),
+            new LocationExtraction(Optional.empty(), ""),
+            true,
+            BigDecimal.valueOf(0.30));
+    Category category = new Category();
+    category.setCode("ABUSE_OF_POWER");
+
+    when(rawContentRepository.findById(rawContentId)).thenReturn(Optional.of(rawContent));
+    when(incidentSourceRepository.findByCanonicalUrl(rawContent.getCanonicalUrl()))
+        .thenReturn(Optional.empty());
+    when(incidentExtractor.extract(rawContent)).thenReturn(candidate);
+    when(deduplicationService.findBestMatch(candidate))
+        .thenReturn(
+            new DeduplicationDecision(DeduplicationAction.NEW_INCIDENT, Optional.empty(), 0));
+    when(categoryRepository.findById("ABUSE_OF_POWER")).thenReturn(Optional.of(category));
+    when(incidentRepository.save(any(Incident.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    IncidentProcessingResult result = service.processRawContent(rawContentId);
+
+    assertThat(result.status()).isEqualTo(IncidentStatus.AUTO_PUBLISHED);
+  }
+
   private RawContent rawContent(UUID id) {
     RawContent rawContent = new RawContent();
     org.springframework.test.util.ReflectionTestUtils.setField(rawContent, "id", id);

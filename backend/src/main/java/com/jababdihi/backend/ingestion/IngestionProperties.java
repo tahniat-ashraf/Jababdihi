@@ -11,6 +11,7 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "app.ingestion")
 public class IngestionProperties {
   @Valid private List<PublisherFeedProperties> publishers = new ArrayList<>();
+  private int itemLimit = -1;
 
   public List<PublisherFeedProperties> getPublishers() {
     return publishers;
@@ -18,6 +19,14 @@ public class IngestionProperties {
 
   public void setPublishers(List<PublisherFeedProperties> publishers) {
     this.publishers = publishers;
+  }
+
+  public int getItemLimit() {
+    return itemLimit;
+  }
+
+  public void setItemLimit(int itemLimit) {
+    this.itemLimit = itemLimit;
   }
 
   public static class PublisherFeedProperties {
