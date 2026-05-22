@@ -397,7 +397,7 @@ Open a small PR touching `backend/` or `infra/` and verify:
 
 | Item | Staging | Production |
 |------|---------|------------|
-| VPS IP | `YOUR_STAGING_VPS_IP` | *(not set up)* |
+| VPS IP | *(see GitHub secret `STAGING_VPS_HOST`)* | *(not set up)* |
 | NGINX port | `8081` | `80` |
 | API domain | *(pending DNS)* | *(pending DNS)* |
 | GitHub secrets | ✅ set | ❌ not set |

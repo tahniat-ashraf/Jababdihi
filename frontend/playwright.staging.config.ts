@@ -7,7 +7,7 @@
  *   STAGING_FRONTEND_URL  – Vercel preview or staging alias URL, e.g.
  *                           https://jababdihi-<hash>-ta-workspace.vercel.app
  *   STAGING_API_BASE_URL  – Direct staging backend URL, e.g.
- *                           http://YOUR_STAGING_VPS_IP:8081
+ *                           http://<YOUR_STAGING_VPS_IP>:8081
  *
  * Run locally:
  *   STAGING_FRONTEND_URL=https://... STAGING_API_BASE_URL=http://... \

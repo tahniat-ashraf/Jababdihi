@@ -10,7 +10,7 @@
  *     or let the CI staging-e2e job do it automatically).
  *   - STAGING_FRONTEND_URL points to the deployed Vercel preview / staging alias.
  *   - STAGING_API_BASE_URL points directly to the staging backend (e.g.
- *     http://YOUR_STAGING_VPS_IP:8081).
+ *     http://<YOUR_STAGING_VPS_IP>:8081).
  *
  * Run:
  *   STAGING_FRONTEND_URL=https://... STAGING_API_BASE_URL=http://... \

@@ -1,3 +1,7 @@
+# Local development default only.
+# In every deployed environment (staging / prod) this value is overridden by
+# APP_ADMIN_API_KEY in the corresponding .env.<env> file — this placeholder
+# never reaches a running container.
 app:
   admin:
     api-key: dev-api-key
