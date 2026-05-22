@@ -308,6 +308,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history + all tags needed for semver bump logic
 
       - uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -342,24 +344,57 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Tag format: v2026.05.22
-          # If multiple releases happen on the same day, append -2, -3, etc.
-          DATE=$(date -u +%Y.%m.%d)
-          TAG="v${DATE}"
+          # ── Semver bump logic ───────────────────────────────────────────
+          # Follows https://semver.org  (MAJOR.MINOR.PATCH)
+          #
+          # Bump rules (conventional commits, checked against commits since
+          # the last release tag):
+          #
+          #   MAJOR  — any commit with "BREAKING CHANGE" in the body/footer,
+          #             or a "!" after the type  (e.g. feat!: ..., fix!: ...)
+          #   MINOR  — any commit whose subject starts with "feat:"
+          #   PATCH  — everything else (fix:, chore:, docs:, refactor:, …)
+          #
+          # First release ever → v1.0.0
+          # ────────────────────────────────────────────────────────────────
 
-          N=2
-          CANDIDATE="$TAG"
-          while gh release view "$CANDIDATE" --repo "${{ github.repository }}" > /dev/null 2>&1; do
-            CANDIDATE="${TAG}-${N}"
-            N=$((N + 1))
-          done
-          TAG="$CANDIDATE"
+          # Find the latest vX.Y.Z tag (sort by semver, pick the highest).
+          LATEST_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' \
+            | sort -t. -k1,1V -k2,2n -k3,3n \
+            | tail -1)
 
-          echo "Creating release ${TAG} ..."
-          gh release create "$TAG" \
+          if [ -z "$LATEST_TAG" ]; then
+            NEW_TAG="v1.0.0"
+            echo "No previous release found — starting at $NEW_TAG"
+          else
+            echo "Latest release tag: $LATEST_TAG"
+            VERSION="${LATEST_TAG#v}"
+            MAJOR=$(echo "$VERSION" | cut -d. -f1)
+            MINOR=$(echo "$VERSION" | cut -d. -f2)
+            PATCH=$(echo "$VERSION" | cut -d. -f3)
+
+            # Collect commit subjects + bodies since the last release.
+            COMMITS=$(git log "${LATEST_TAG}..HEAD" --pretty=format:"%s%n%b" 2>/dev/null || echo "")
+
+            if echo "$COMMITS" | grep -qE "(BREAKING[[:space:]]CHANGE|^(feat|fix|chore|docs|refactor|perf|test|ci|build)!:)"; then
+              NEW_TAG="v$((MAJOR + 1)).0.0"
+              BUMP="MAJOR"
+            elif echo "$COMMITS" | grep -qE "^feat(\([^)]+\))?:"; then
+              NEW_TAG="v${MAJOR}.$((MINOR + 1)).0"
+              BUMP="MINOR"
+            else
+              NEW_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+              BUMP="PATCH"
+            fi
+
+            echo "Bump type: $BUMP  →  $LATEST_TAG → $NEW_TAG"
+          fi
+
+          echo "Creating release $NEW_TAG ..."
+          gh release create "$NEW_TAG" \
             --repo "${{ github.repository }}" \
-            --title "Release ${TAG}" \
+            --title "$NEW_TAG" \
             --generate-notes \
             --latest \
             --target "${{ github.sha }}"
-          echo "Release created: https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+          echo "Release created: https://github.com/${{ github.repository }}/releases/tag/${NEW_TAG}"
