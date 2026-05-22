@@ -1,8 +1,9 @@
 # Vercel Setup Guide — Jababdihi Frontend
 
 This guide walks through connecting the Jababdihi monorepo to Vercel using
-the GitHub integration so that every pull request gets a preview deployment
-and every merge to `main` triggers a production deployment.
+the GitHub integration so that every feature branch and pull request gets a
+preview deployment and every merge to `main` triggers a production frontend
+deployment.
 
 No Vercel tokens or CI credentials are needed — Vercel manages deployments
 automatically through the GitHub app.
@@ -99,8 +100,12 @@ Under **Git** settings (or on the same screen), verify:
 Production Branch: main
 ```
 
-Merging a pull request into `main` triggers a **Production Deployment**.
-All other branches and PRs trigger **Preview Deployments**.
+Merging a pull request into `main` triggers a **Production Deployment** for the
+frontend. All other branches and PRs trigger **Preview Deployments**.
+
+Backend production is separate: merging to `main` deploys the backend to staging.
+Promote the verified commit to the production backend with
+`git push origin main:production`.
 
 ---
 
@@ -110,8 +115,15 @@ In **Project Settings → Git**, confirm:
 
 - **Preview Deployments** is enabled for pull requests and branches.
 
-Each opened or updated PR will receive a unique preview URL posted as a
-GitHub deployment status check.
+Each feature branch push creates or updates a stable branch preview URL, for
+example:
+
+```text
+https://jababdihi-git-feature-xyz-ta-workspace.vercel.app
+```
+
+Opening or updating a PR keeps that same preview deployment fresh and posts it
+as a GitHub deployment status check.
 
 ---
 
@@ -132,18 +144,27 @@ Production deployments are publicly accessible regardless of this setting.
 
 ### Open a PR and check the preview
 
-1. Create a branch, make a small change, and open a pull request against `main`.
-2. Wait for the **Vercel** deployment check to appear on the PR.
-3. Click the **Visit** link and confirm the preview frontend loads.
-4. Confirm the preview frontend is calling the **staging** backend
+1. Create a branch and push it. Vercel should create the branch preview immediately, even before the PR exists.
+2. Open a pull request against `main`.
+3. Wait for the **Vercel** deployment check and the `e2e-staging` GitHub Actions job.
+4. Click the **Visit** link and confirm the preview frontend loads.
+5. Confirm the preview frontend is calling the **staging** backend
    (`staging-api.<domain>`) and not `localhost`.
    - Open browser DevTools → Network and look at the `/api/incidents` request.
 
-### Merge to main and check production
+### Merge to main and promote backend production
 
 1. Merge the PR into `main`.
-2. In the Vercel dashboard, confirm a **Production Deployment** is created.
-3. Open the production URL and confirm it loads and calls `api.<domain>`.
+2. In the Vercel dashboard, confirm a **Production Deployment** is created for the frontend.
+3. Confirm GitHub Actions deploys the backend to staging and runs staging smoke tests.
+4. Promote the verified backend commit:
+
+   ```bash
+   git push origin main:production
+   ```
+
+5. Approve the `production` GitHub Environment deployment.
+6. Open the production URL and confirm it loads and calls `api.<domain>`.
 
 ---
 

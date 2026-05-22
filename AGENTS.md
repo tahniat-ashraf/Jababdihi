@@ -46,7 +46,7 @@ jababdihi/
 
 - Use Next.js App Router.
 - Use React, TypeScript, TailwindCSS, and shadcn/ui.
-- Use Vercel preview deployments for PR UX review and Vercel production deployment from the production branch.
+- Use Vercel preview deployments for branch/PR UX review and Vercel production deployment from `main`.
 - The public UI must support Bangla and English from MVP.
 - Actor role and language are reflected in the URL.
 - Category selections remain local frontend state and are not encoded in the URL.
@@ -122,16 +122,16 @@ jababdihi/
 
 ## CI/CD Rules
 
-- Use GitHub pull requests for all changes.
-- `main` or the configured production branch must be protected.
-- Require PR review and passing checks before production deploy.
+- Use GitHub pull requests for reviewable changes.
+- `main` and the `production` promotion branch must be protected.
+- Require PR review and passing checks before promotion to backend production.
 - Frontend:
-  - Vercel creates preview deployments for PRs.
-  - Vercel deploys production from the production branch.
+  - Vercel creates preview deployments for feature branch pushes and PRs.
+  - Vercel deploys production frontend from `main`.
 - Backend:
   - GitHub Actions builds/tests backend and deploys Docker Compose services over SSH.
-  - Staging deploys from PR/develop workflow.
-  - Production deploys after merge/manual approval.
+  - Staging deploys from PRs, pushes to `main`, and manual staging dispatch.
+  - Production backend deploys only after `git push origin main:production` or manual production dispatch, with GitHub Environment approval.
 - Staging and production must use the same Docker images, service topology, Flyway migrations, API contracts, and AI integration shape.
 - Staging and production must use separate databases.
 

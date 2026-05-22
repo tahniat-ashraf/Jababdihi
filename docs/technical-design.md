@@ -1480,10 +1480,11 @@ Frontend:
 ```yaml
 frontendCicd:
   platform: Vercel
-  previewDeployments: every_pull_request
+  previewDeployments: every_branch_push_and_pull_request
   previewBackend: staging-api
   productionBranch: main
   productionDeploy: merge_to_main
+  featureBranchPreviewPattern: "https://jababdihi-git-{branch-slug}-{vercel-team-slug}.vercel.app"
   approvalGate: GitHub branch protection
   previewProtection: Vercel Authentication
 ```
@@ -1494,8 +1495,13 @@ Backend:
 backendCicd:
   provider: GitHub Actions
   deployMethod: docker_compose_over_ssh
-  stagingDeploy: pull_request_or_develop_branch
-  productionDeploy: merge_to_main_with_manual_approval
+  stagingDeploy: pull_request_or_main_or_manual_dispatch
+  e2eStaging:
+    pullRequest: playwright_against_vercel_branch_preview_plus_staging_backend
+    main: backend_smoke_tests_unless_STAGING_FRONTEND_URL_is_set
+  productionBranch: production
+  productionPromotion: "git push origin main:production"
+  productionDeploy: production_branch_or_manual_dispatch_with_manual_approval
 ```
 
 AI-agent development loop:
@@ -1503,16 +1509,19 @@ AI-agent development loop:
 ```mermaid
 flowchart TD
     A[User requests change] --> B[AI agent creates feature branch]
-    B --> C[Pull request opened]
-    C --> D[CI builds and tests]
-    D --> E[Vercel preview deployed]
-    D --> F[Backend staging deployed]
-    E --> G[User reviews UX]
-    F --> G
-    G -->|Needs changes| B
-    G -->|Approved| H[Merge to main]
-    H --> I[Vercel production deploy]
-    H --> J[Backend production deploy after approval]
+    B --> C[Push feature branch]
+    C --> D[Vercel preview deployed with Preview env]
+    C --> E[Open PR / push commits]
+    E --> F[CI test, build image, deploy staging backend]
+    F --> G[Playwright hits Vercel preview plus staging backend]
+    D --> G
+    G --> H[User reviews UX]
+    H -->|Needs changes| B
+    H -->|Approved| I[Merge to main]
+    I --> J[Vercel production deploy]
+    I --> K[CI deploys backend to staging and runs smoke tests]
+    K --> L[Promote backend with git push origin main:production]
+    L --> M[Backend production deploy after approval]
 ```
 
 ---

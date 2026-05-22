@@ -28,10 +28,11 @@ BACKEND_API_BASE_URL=https://api.example.com
 
 ## Deployment Policy
 
-- Pull requests create Vercel preview deployments.
+- Feature branch pushes and pull requests create Vercel preview deployments.
 - Preview deployments use the staging API.
-- Production deploys from `main`.
+- Vercel frontend production deploys from `main`.
 - Production deployments use the production API.
+- Backend production is promoted separately with `git push origin main:production`.
 - Do not expose PostgreSQL, Redis, Ollama, or worker services through Vercel.
 
 ## GitHub Integration

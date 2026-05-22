@@ -56,20 +56,23 @@ Create these environments at **Settings → Environments**:
 | `staging` | Staging deploy. No approval required. |
 | `production` | Production deploy. Require at least one reviewer. Flyway migrations and service rollout run as a single approved step via `deploy-prod.sh`. |
 
-Require branch protection on `main` (Settings → Branches) so the production
-environment is only reachable from merged commits.
+Require branch protection on `main` (Settings → Branches) so promotion starts
+from a reviewed commit. Restrict the `production` GitHub Environment to the
+`production` branch, then promote with `git push origin main:production`.
 
 ### Approving a production deploy
 
-1. A push to `main` triggers the workflow. The `test` and `build-image` jobs run automatically.
-2. Once the image is built, the `deploy-production` job pauses and shows **"Waiting for review"** in the Actions UI.
-3. A reviewer visits the run, clicks **Review deployments**, selects `production`, and clicks **Approve and deploy**.
-4. The workflow SSHes into the production VPS and runs `deploy-prod.sh`, which:
+1. Merge to `main` first. The workflow deploys the backend to staging and runs smoke tests.
+2. Promote the verified commit with `git push origin main:production`.
+3. The `production` branch workflow runs `test` and `build-image`.
+4. Once the image is built, the `deploy-production` job pauses and shows **"Waiting for review"** in the Actions UI.
+5. A reviewer visits the run, clicks **Review deployments**, selects `production`, and clicks **Approve and deploy**.
+6. The workflow SSHes into the production VPS and runs `deploy-prod.sh`, which:
    - Pulls the new image
    - Runs Flyway migrations in a one-shot container
    - Starts all services with `docker compose up -d --wait`
    - Polls `/actuator/health` for up to 90 s
-5. If health check passes, the job turns green. If it fails, the job exits non-zero and services remain on the previous image (compose keeps the last healthy container running until explicitly replaced).
+7. If health check passes, the job turns green. If it fails, the job exits non-zero and services remain on the previous image (compose keeps the last healthy container running until explicitly replaced).
 
 ---
 
