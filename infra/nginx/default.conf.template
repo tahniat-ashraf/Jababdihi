@@ -7,6 +7,9 @@ server {
 
     client_max_body_size 2m;
 
+    # Concurrent connection limit per IP (defence-in-depth behind Cloudflare).
+    limit_conn conn_zone 40;
+
     # ── Security headers ────────────────────────────────────────────────────
     add_header X-Content-Type-Options  nosniff                         always;
     add_header X-Frame-Options         DENY                            always;
@@ -15,6 +18,8 @@ server {
     # ── Health check ────────────────────────────────────────────────────────
     # Exposed for deploy scripts and external monitoring.
     location = /actuator/health {
+        limit_req zone=health_zone burst=10 nodelay;
+
         proxy_pass         http://${BACKEND_API_UPSTREAM}/actuator/health;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -36,6 +41,11 @@ server {
 
     # ── Public API ──────────────────────────────────────────────────────────
     location /api/ {
+        # 60 req/min average; burst=30 lets a genuine page-load spike through
+        # without error, then enforces the limit.  nodelay returns 429
+        # immediately once the burst queue is full (no queuing delay).
+        limit_req zone=api_zone burst=30 nodelay;
+
         proxy_pass         http://${BACKEND_API_UPSTREAM};
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;

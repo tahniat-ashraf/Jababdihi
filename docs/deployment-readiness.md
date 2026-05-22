@@ -30,35 +30,79 @@ PRODUCTION_API_URL    = ______________________________________
 
 ## 2. DNS (Cloudflare)
 
-Assuming Cloudflare as the DNS provider. All records should have **Proxy status: DNS only (grey cloud)** for the VPS A records so Cloudflare doesn't intercept the SSH port.
+Assuming Cloudflare as the DNS provider.
+
+> **Proxy status guidance**
+> - **Frontend** (`jababdihi.com`, `www`, `staging`): enable the Cloudflare proxy
+>   (orange cloud). Cloudflare absorbs DDoS before it reaches Vercel.
+> - **API subdomains** (`api.*`, `staging-api.*`): also enable the proxy (orange
+>   cloud). Cloudflare hides the real VPS IP and absorbs volumetric attacks.
+>   SSH to the VPS using the raw IP address, not the hostname — Cloudflare
+>   does not proxy port 22, so SSH still works via IP regardless of proxy
+>   status on the A record.
 
 ### 2.1 Vercel frontend records
 
 Vercel provides the values — go to **Vercel → Project → Settings → Domains** and
 copy the CNAME / A record targets it gives you.
 
-- [ ] `jababdihi.com` → A record (or CNAME to `cname.vercel-dns.com`) — **Production**
-- [ ] `www.jababdihi.com` → CNAME to `cname.vercel-dns.com` — **Production alias**
-- [ ] `staging.jababdihi.com` → CNAME to `cname.vercel-dns.com` — **Staging frontend** *(optional; Vercel branch alias works without a custom domain)*
+- [ ] `jababdihi.com` → A record (or CNAME to `cname.vercel-dns.com`) — **Proxy: ON (orange cloud)**
+- [ ] `www.jababdihi.com` → CNAME to `cname.vercel-dns.com` — **Proxy: ON**
+- [ ] `staging.jababdihi.com` → CNAME to `cname.vercel-dns.com` — **Proxy: ON** *(optional)*
 
 ### 2.2 VPS API records
 
-| Record | Type | Value | Notes |
+| Record | Type | Value | Proxy |
 |--------|------|-------|-------|
-| `staging-api.<domain>` | A | `<STAGING_VPS_IP>` | Proxy: DNS only |
-| `api.<domain>` | A | `<PROD_VPS_IP>` | Proxy: DNS only |
+| `staging-api.<domain>` | A | `<STAGING_VPS_IP>` | **ON (orange cloud)** |
+| `api.<domain>` | A | `<PROD_VPS_IP>` | **ON (orange cloud)** |
 
-- [ ] Staging A record created and propagating (`dig staging-api.<domain>` returns the VPS IP)
+- [ ] Staging A record created and propagating
 - [ ] Production A record created and propagating
 
 ### 2.3 DNS propagation check
 
+When Cloudflare proxy is **off**: `dig` returns the real VPS IP.
+When proxy is **on**: `dig` returns a Cloudflare anycast IP — that is correct.
+
 ```bash
-dig +short staging-api.<YOUR_DOMAIN>   # must return staging VPS IP
-dig +short api.<YOUR_DOMAIN>           # must return production VPS IP
+# With proxy ON these will return Cloudflare IPs, not your VPS IPs.
+# That is expected and correct.
+dig +short staging-api.<YOUR_DOMAIN>
+dig +short api.<YOUR_DOMAIN>
 ```
 
-- [ ] Both resolve to the correct IPs
+- [ ] Both subdomains resolve (either to VPS IP or Cloudflare IP depending on proxy status)
+
+### 2.4 Cloudflare security settings
+
+Configure these in the **Cloudflare dashboard** for your domain.
+
+**Security → DDoS**
+- [ ] HTTP DDoS Attack Protection ruleset — set to **High** sensitivity
+
+**Security → Bots**
+- [ ] **Bot Fight Mode** — Enabled (free; challenges known bot IPs at the edge)
+
+**Security → WAF → Custom Rules** *(free tier allows 5 rules)*
+
+Create one rate-limiting rule to protect the API subdomain:
+
+| Field | Value |
+|-------|-------|
+| Rule name | `API rate limit` |
+| When | `Hostname equals staging-api.<domain> OR api.<domain>` AND `URI Path starts with /api/` |
+| Rate limit | More than **120** requests in **60** seconds from the same IP |
+| Action | **Block** (or **Managed Challenge** if you prefer) |
+| Duration | 10 minutes |
+
+- [ ] Rate limit WAF rule created for `/api/` paths
+
+> **Note on Vercel billing:** Vercel **Hobby** (free) uses hard caps — you
+> cannot be billed for overages; excessive traffic is rejected, not charged.
+> The $2 000+ horror stories are from Vercel **Pro** tier. If you ever
+> upgrade to Pro, enable **Settings → Billing → Spend Management** to set a
+> monthly budget ceiling.
 
 ---
 
