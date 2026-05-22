@@ -54,11 +54,22 @@ Create these environments at **Settings → Environments**:
 | Environment | Purpose |
 |-------------|---------|
 | `staging` | Staging deploy. No approval required. |
-| `production-migrations` | Production Flyway migration step. Require at least one reviewer. |
-| `production` | Production service deploy. Require at least one reviewer. |
+| `production` | Production deploy. Require at least one reviewer. Flyway migrations and service rollout run as a single approved step via `deploy-prod.sh`. |
 
-Require branch protection on `main` (Settings → Branches) so production
-environments are only reachable from merged commits.
+Require branch protection on `main` (Settings → Branches) so the production
+environment is only reachable from merged commits.
+
+### Approving a production deploy
+
+1. A push to `main` triggers the workflow. The `test` and `build-image` jobs run automatically.
+2. Once the image is built, the `deploy-production` job pauses and shows **"Waiting for review"** in the Actions UI.
+3. A reviewer visits the run, clicks **Review deployments**, selects `production`, and clicks **Approve and deploy**.
+4. The workflow SSHes into the production VPS and runs `deploy-prod.sh`, which:
+   - Pulls the new image
+   - Runs Flyway migrations in a one-shot container
+   - Starts all services with `docker compose up -d --wait`
+   - Polls `/actuator/health` for up to 90 s
+5. If health check passes, the job turns green. If it fails, the job exits non-zero and services remain on the previous image (compose keeps the last healthy container running until explicitly replaced).
 
 ---
 
