@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { ConfidenceGauge } from "@/components/confidence-gauge";
+import {
+  formatIncidentDate,
+  localizeActorRole,
+  localizeCategory,
+  localizeConfidence,
+  localizePublisher,
+  UI_COPY
+} from "@/lib/i18n";
 import type { IncidentDetail, LanguageCode } from "@/lib/public-api";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +34,7 @@ const copy = {
   }
 };
 
-function formatDate(
+function formatSourceDate(
   dateStr: string | null | undefined,
   language: LanguageCode
 ): string | null {
@@ -51,7 +59,9 @@ export function IncidentDetail({ incident, language }: Props) {
   const backHref = `/${language}?actorRole=${incident.actorRole}`;
   const location =
     incident.location?.displayText ?? incident.location?.district ?? null;
-  const incidentDateFormatted = formatDate(incident.incidentDate, language);
+  const incidentDateFormatted = formatIncidentDate(incident.incidentDate, language);
+  const actorLabel = localizeActorRole(incident.actorRole, language);
+  const confidenceLabel = localizeConfidence(incident.confidence.label, language);
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -71,7 +81,7 @@ export function IncidentDetail({ incident, language }: Props) {
       >
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span className={cn("rounded-full px-2 py-0.5 text-white", accentBadge)}>
-            {incident.actorRole}
+            {actorLabel}
           </span>
           {incidentDateFormatted ? <span>{incidentDateFormatted}</span> : null}
           {location ? <span>{location}</span> : null}
@@ -84,7 +94,8 @@ export function IncidentDetail({ incident, language }: Props) {
         <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-start">
           <ConfidenceGauge
             score={incident.confidence.score}
-            label={incident.confidence.label}
+            label={confidenceLabel}
+            fallbackLabel={UI_COPY[language].confidence}
           />
           {incident.confidence.explanation ? (
             <p className="text-sm leading-6 text-muted-foreground sm:mt-4">
@@ -104,7 +115,7 @@ export function IncidentDetail({ incident, language }: Props) {
                   className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium"
                   key={cat}
                 >
-                  {cat}
+                  {localizeCategory(cat, language)}
                 </span>
               ))}
             </div>
@@ -128,13 +139,14 @@ export function IncidentDetail({ incident, language }: Props) {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium group-hover:underline">
                         {source.sourceTitle ||
-                          source.publisherName ||
+                          localizePublisher(source.publisherName, language) ||
                           labels.sourceFallback}
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {source.publisherName || labels.sourceFallback}
+                        {localizePublisher(source.publisherName, language) ||
+                          labels.sourceFallback}
                         {" · "}
-                        {formatDate(source.publishedAt, language) ??
+                        {formatSourceDate(source.publishedAt, language) ??
                           labels.noPublishDate}
                       </p>
                     </div>
