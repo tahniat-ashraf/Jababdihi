@@ -27,6 +27,7 @@ public class RawContent {
   private String relevantExcerpt;
   private String contentHash;
   private String languageCode;
+  private Instant publishedAt;
   private Instant fetchedAt;
   private String parsingStatus;
   private String aiProcessingStatus;
@@ -99,6 +100,14 @@ public class RawContent {
 
   public void setLanguageCode(String languageCode) {
     this.languageCode = languageCode;
+  }
+
+  public Instant getPublishedAt() {
+    return publishedAt;
+  }
+
+  public void setPublishedAt(Instant publishedAt) {
+    this.publishedAt = publishedAt;
   }
 
   public Instant getFetchedAt() {

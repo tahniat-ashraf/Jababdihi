@@ -26,7 +26,7 @@ public class Publisher {
   private Instant createdAt;
   private Instant updatedAt;
 
-  protected Publisher() {}
+  public Publisher() {}
 
   public UUID getId() {
     return id;

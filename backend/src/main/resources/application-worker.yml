@@ -14,3 +14,57 @@ spring:
       org.quartz.scheduler.instanceId: AUTO
       org.quartz.jobStore.driverDelegateClass: org.quartz.impl.jdbcjobstore.PostgreSQLDelegate
       org.quartz.jobStore.isClustered: true
+
+app:
+  ingestion:
+    publishers:
+      - name: Prothom Alo
+        domain: prothomalo.com
+        homepage-url: https://www.prothomalo.com
+        feed-url: https://www.prothomalo.com/feed
+        language-code: bn
+      - name: The Daily Star
+        domain: thedailystar.net
+        homepage-url: https://www.thedailystar.net
+        feed-url: https://www.thedailystar.net/rss.xml
+        language-code: en
+      - name: bdnews24
+        domain: bdnews24.com
+        homepage-url: https://bdnews24.com
+        feed-url: https://bdnews24.com/feed
+        language-code: en
+      - name: Dhaka Tribune
+        domain: dhakatribune.com
+        homepage-url: https://www.dhakatribune.com
+        feed-url: https://www.dhakatribune.com/rss
+        language-code: en
+      - name: New Age
+        domain: newagebd.net
+        homepage-url: https://www.newagebd.net
+        feed-url: https://www.newagebd.net/rss
+        language-code: en
+      - name: The Business Standard
+        domain: tbsnews.net
+        homepage-url: https://www.tbsnews.net
+        feed-url: https://www.tbsnews.net/tbs-rss
+        language-code: en
+      - name: Jugantor
+        domain: jugantor.com
+        homepage-url: https://www.jugantor.com
+        feed-url: https://www.jugantor.com/rss.xml
+        language-code: bn
+      - name: Kaler Kantho
+        domain: kalerkantho.com
+        homepage-url: https://www.kalerkantho.com
+        feed-url: https://www.kalerkantho.com/rss.xml
+        language-code: bn
+      - name: Samakal
+        domain: samakal.com
+        homepage-url: https://samakal.com
+        feed-url: https://samakal.com/rss.xml
+        language-code: bn
+      - name: Ittefaq
+        domain: ittefaq.com.bd
+        homepage-url: https://www.ittefaq.com.bd
+        feed-url: https://www.ittefaq.com.bd/rss.xml
+        language-code: bn
