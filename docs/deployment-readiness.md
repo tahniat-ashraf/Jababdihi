@@ -143,15 +143,21 @@ Set at **Settings → Environment Variables**, scope: **Production**.
 - [ ] `ADMIN_USERNAME` set for Production
 - [ ] `ADMIN_PASSWORD` set for Production
 
-### 3.4 Staging frontend domain (required for post-merge E2E)
+### 3.4 Optional staging frontend domain for post-merge E2E
 
-The CI pipeline (push to `main`) needs a stable Vercel URL that:
+Pull-request E2E derives the Vercel preview URL from the branch name, for
+example:
+
+```text
+https://jababdihi-git-feature-xyz-ta-workspace.vercel.app
+```
+
+The push-to-`main` pipeline can also use a stable Vercel URL that:
 - Serves the **latest main-branch** frontend
 - Uses **Preview** environment variables (so `BACKEND_API_BASE_URL` points to the
   staging VPS, not the production API)
 
-Without this, E2E smoke tests cannot verify the full stack after merge and the
-pipeline blocks production.
+Without this optional domain, post-merge CI runs backend-only smoke tests.
 
 **Step-by-step:**
 
@@ -164,9 +170,9 @@ pipeline blocks production.
 4. **GitHub → Settings → Secrets and variables → Actions → Variables** →
    Add `STAGING_FRONTEND_URL` = `https://staging.jababdihi.com`
 
-After this, every push to `main` builds a Vercel deployment at
+After this, every push to `main` can build a Vercel deployment at
 `staging.jababdihi.com` (Preview env, staging backend), which the CI E2E
-job uses before approving the production deploy.
+job uses for full-stack smoke tests.
 
 - [ ] `staging.jababdihi.com` added in Vercel with branch = `main`, environment = Preview
 - [ ] DNS CNAME for `staging.<domain>` created in Cloudflare (Proxy: ON)
@@ -226,10 +232,10 @@ Set at **Settings → Secrets and variables → Actions → Variables**.
 | Variable | Value |
 |----------|-------|
 | `VERCEL_TEAM_SLUG` | `ta-workspace` (the slug in your Vercel preview URLs) |
-| `STAGING_FRONTEND_URL` | `https://staging.<YOUR_DOMAIN>` (Vercel domain with Preview env + staging backend — see section 3.4) |
+| `STAGING_FRONTEND_URL` | Optional: `https://staging.<YOUR_DOMAIN>` (Vercel domain with Preview env + staging backend — see section 3.4) |
 
 - [ ] `VERCEL_TEAM_SLUG` present
-- [ ] `STAGING_FRONTEND_URL` present *(required for post-merge E2E and production gating)*
+- [ ] `STAGING_FRONTEND_URL` present *(optional; enables full Playwright E2E on pushes to `main`)*
 
 ### 4.3 Environments
 
@@ -245,7 +251,7 @@ Create at **Settings → Environments**.
 
 - [ ] Environment `production` exists (lowercase — workflow uses `production`)
 - [ ] **Required reviewers** — add yourself (and any co-maintainers)
-- [ ] **Allowed branches** restricted to `main` only
+- [ ] **Allowed branches** restricted to `production` only
 - [ ] The old `production-migrations` environment is **deleted** (no longer used)
 
 ### 4.4 Branch protection on `main`
@@ -463,8 +469,9 @@ Open a small PR touching `backend/` or `infra/` and verify:
 - [ ] `Build backend image` job passes
 - [ ] `Deploy staging` job passes (ends with "Staging is healthy")
 - [ ] `Staging E2E smoke tests` job passes (all 10 Playwright tests)
-- [ ] Merge → `Deploy production` job pauses for approval
-- [ ] After approval → production deploys and health check passes
+- [ ] Merge to `main` → Vercel production frontend deploys and backend deploys to staging
+- [ ] `git push origin main:production` → `Deploy production` job pauses for approval
+- [ ] After approval → backend production deploys and health check passes
 
 ---
 

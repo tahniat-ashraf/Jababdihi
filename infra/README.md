@@ -54,7 +54,7 @@ docker compose --env-file infra/.env.prod.example \
 
 ## CI/CD
 
-Backend CI runs on pull requests and pushes to `main` or `staging`:
+Backend CI runs on pull requests and pushes to `main` or `production`:
 
 - `mvn spotless:check`
 - `mvn test`
@@ -64,16 +64,16 @@ Backend deployment workflow:
 
 - Builds and pushes one backend Docker image to GHCR.
 - Runs the same image as `backend-api` and `backend-worker`, with profile differences supplied by Compose.
-- Deploys staging from pull requests from this repository, the `staging` branch, or manual workflow dispatch.
-- Deploys production from `main` or manual workflow dispatch.
+- Deploys staging from pull requests from this repository, pushes to `main`, or manual workflow dispatch.
+- Runs staging E2E after deploy. Pull requests use the Vercel branch preview plus the staging backend; pushes to `main` use backend-only smoke tests unless `STAGING_FRONTEND_URL` is configured.
+- Deploys production only from the `production` branch or manual production dispatch.
+- Promotes a verified `main` commit to production with `git push origin main:production`.
 - Runs Flyway automatically before staging deploy.
-- Runs production Flyway migrations in a separate `production-migrations` GitHub Environment, so approval can be required before migrations execute.
-- Deploys production in the `production` GitHub Environment, so final deploy approval can be required separately.
+- Runs production Flyway migrations and service rollout inside the approved `production` GitHub Environment.
 
 Required GitHub repository environments:
 
 - `staging`
-- `production-migrations`
 - `production`
 
 Required GitHub secrets:
@@ -103,7 +103,7 @@ See [Vercel setup](vercel.md).
 
 Summary:
 
-- Vercel preview deployments run for pull requests.
+- Vercel preview deployments run for feature branch pushes and pull requests.
 - Preview uses the staging API.
 - Vercel production deploys from `main`.
 - Production uses the production API.

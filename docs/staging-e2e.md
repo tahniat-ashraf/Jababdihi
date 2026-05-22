@@ -28,27 +28,33 @@ After the `deploy-staging` job succeeds, the `e2e-staging` job:
 
 1. SSHes into the staging VPS and runs `./scripts/run-seed.sh staging`
    (idempotent — skips if seed data is already present).
-2. Sets up Node.js and installs Playwright on the runner.
-3. Runs `npm run test:e2e:staging` against `STAGING_FRONTEND_URL`.
-4. Uploads the Playwright report as a GitHub Actions artifact if tests fail.
+2. Resolves the frontend URL.
+   - Pull requests use the deterministic Vercel branch preview URL.
+   - Pushes to `main` use `STAGING_FRONTEND_URL` if configured.
+3. Sets up Node.js and installs Playwright on the runner when a frontend URL is available.
+4. Runs `npm run test:e2e:staging` against the resolved frontend URL.
+5. Falls back to backend-only API smoke tests on `main` when `STAGING_FRONTEND_URL` is not configured.
+6. Uploads the Playwright report as a GitHub Actions artifact if tests fail.
 
-The job is skipped if the `STAGING_FRONTEND_URL` repository variable is not set
-(see [Setup](#setup) below).
+Pull-request E2E requires `VERCEL_TEAM_SLUG`. Full frontend E2E on pushes to
+`main` additionally requires `STAGING_FRONTEND_URL`; otherwise the workflow
+still verifies the staging backend.
 
 ---
 
 ## Setup
 
-### 1. GitHub repository variable
+### 1. GitHub repository variables
 
-Set one variable at **Settings → Secrets and variables → Actions → Variables**:
+Set the required Vercel team slug at **Settings → Secrets and variables →
+Actions → Variables**:
 
 | Variable | Value | Notes |
 |----------|-------|-------|
 | `VERCEL_TEAM_SLUG` | `ta-workspace` | The slug that appears in your Vercel preview URLs, e.g. `jababdihi-git-main-**ta-workspace**.vercel.app` |
 
-The CI job derives `STAGING_FRONTEND_URL` automatically from the branch name
-using Vercel's deterministic branch-alias format:
+For pull requests, the CI job derives the frontend URL automatically from the
+branch name using Vercel's deterministic branch-alias format:
 
 ```
 https://jababdihi-git-{branch-slug}-{VERCEL_TEAM_SLUG}.vercel.app
@@ -58,8 +64,12 @@ For branch `feat/my-feature` → `jababdihi-git-feat-my-feature-ta-workspace.ver
 This URL always points to the **latest** Vercel deployment of that branch —
 no hash, stable for the lifetime of the branch.
 
-`STAGING_API_BASE_URL` is derived from `STAGING_VPS_HOST` and does not
-need a separate variable.
+For pushes to `main`, add optional `STAGING_FRONTEND_URL` if you want full
+Playwright coverage against a stable staging frontend domain. Without it, CI
+runs backend-only smoke tests.
+
+`STAGING_API_BASE_URL` is derived from `STAGING_VPS_HOST` and does not need a
+separate variable.
 
 ### 2. Staging seed data
 
@@ -150,9 +160,10 @@ database has additional manually-entered incidents beyond the seed baseline.
 
 ## Troubleshooting
 
-**E2E job skipped silently:**
-Check that `STAGING_FRONTEND_URL` is set under **Settings → Secrets and
-variables → Actions → Variables** (not Secrets).
+**Main-branch run only performs backend smoke tests:**
+Set optional `STAGING_FRONTEND_URL` under **Settings → Secrets and variables →
+Actions → Variables** (not Secrets) to enable full Playwright coverage on
+pushes to `main`.
 
 **`STAGING_FRONTEND_URL is required` error on local run:**
 Export the variable before running the tests:

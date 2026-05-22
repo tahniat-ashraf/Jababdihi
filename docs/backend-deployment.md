@@ -21,8 +21,9 @@ The image is pushed to GitHub Container Registry:
 ghcr.io/tahniat-ashraf/jababdihi-backend:<image-tag>
 ```
 
-Image tags follow the pattern `sha-<7-char-commit-hash>`.
-Release tags (e.g. `v1.2.3`) are used for production deploys.
+Pushes to `main` and `production` use the commit SHA as the image tag so the
+same image verified in staging can be promoted to production. Pull requests also
+publish a `pr-<number>` tag for the staging deploy tied to that PR.
 
 ---
 
@@ -49,14 +50,20 @@ Services per environment:
 
 ## How staging deploy works
 
-1. GitHub Actions builds the image, pushes to GHCR with tag `sha-<hash>`.
-2. The workflow SSH-es into the staging VPS.
-3. It runs `deploy-staging.sh sha-<hash>` from the `infra/` directory.
-4. The script:
+1. GitHub Actions runs on pull requests, pushes to `main`, and manual staging dispatches.
+2. It builds the backend image and pushes it to GHCR.
+3. The workflow SSH-es into the staging VPS.
+4. It runs the staging migration/deploy flow from the `infra/` directory.
+5. The script:
    - Pulls the new image.
    - Runs Flyway migrations in a one-shot container.
    - Starts all services with `docker compose up -d --wait`.
    - Polls `/actuator/health` through NGINX until `UP` or times out.
+
+After deploy, `e2e-staging` seeds staging data and runs smoke tests. For pull
+requests it derives the Vercel preview URL from the branch name and runs
+Playwright against that frontend plus the staging backend. For pushes to `main`,
+it runs backend-only smoke tests unless `STAGING_FRONTEND_URL` is configured.
 
 Staging Spring profiles: `api,staging` and `worker,staging`.
 
@@ -67,12 +74,20 @@ Use the admin manual-trigger endpoints to run ingestion tasks on staging.
 
 ## How production deploy works
 
-1. After merging to `main`, GitHub Actions builds a release image.
-2. The `production-migrations` environment requires manual approval.
-3. After approval, Flyway migrations run against the production database.
-4. The `production` environment also requires manual approval.
-5. After approval, `deploy-prod.sh <tag>` runs the production update.
-6. The script follows the same pull → migrate → up → health-check flow.
+1. Merge to `main` first. This creates the Vercel production frontend deployment
+   and deploys the backend image to staging for verification.
+2. Promote the already-verified commit with:
+
+   ```bash
+   git push origin main:production
+   ```
+
+3. GitHub Actions builds/publishes the same SHA-tagged backend image for the
+   `production` branch.
+4. The `production` environment requires manual approval.
+5. After approval, `deploy-prod.sh <tag>` runs migrations and rolls out the
+   production services.
+6. The script follows the same pull -> migrate -> up -> health-check flow.
 
 Production Spring profiles: `api,prod` and `worker,prod`.
 
@@ -95,10 +110,10 @@ cd /opt/jababdihi/staging/repo/infra
 ```bash
 ssh deploy@<PROD_VPS_IP>
 cd /opt/jababdihi/prod/repo/infra
-./scripts/deploy-prod.sh v1.2.3
+./scripts/deploy-prod.sh <sha-or-release-tag>
 ```
 
-Replace `sha-abc1234` / `v1.2.3` with the actual image tag.
+Replace `sha-abc1234` / `<sha-or-release-tag>` with the actual image tag.
 
 ---
 
