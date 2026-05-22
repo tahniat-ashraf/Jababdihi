@@ -1,8 +1,10 @@
 package com.jababdihi.backend.ingestion;
 
+import com.jababdihi.backend.observability.OperationalMetricsService;
 import com.jababdihi.backend.source.Publisher;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,7 @@ public class AllowlistedPublisherIngestionService {
   private final RawContentRepository rawContentRepository;
   private final PublisherResolver publisherResolver;
   private final Clock clock;
+  private final OperationalMetricsService metricsService;
 
   AllowlistedPublisherIngestionService(
       IngestionProperties ingestionProperties,
@@ -31,7 +34,8 @@ public class AllowlistedPublisherIngestionService {
       ContentHashGenerator contentHashGenerator,
       RawContentRepository rawContentRepository,
       PublisherResolver publisherResolver,
-      Clock clock) {
+      Clock clock,
+      OperationalMetricsService metricsService) {
     this.ingestionProperties = ingestionProperties;
     this.feedClient = feedClient;
     this.articleScraper = articleScraper;
@@ -40,6 +44,7 @@ public class AllowlistedPublisherIngestionService {
     this.rawContentRepository = rawContentRepository;
     this.publisherResolver = publisherResolver;
     this.clock = clock;
+    this.metricsService = metricsService;
   }
 
   @Transactional
@@ -67,19 +72,31 @@ public class AllowlistedPublisherIngestionService {
     int storedItems = 0;
     int skippedItems = 0;
 
-    for (FeedItem item : feedClient.fetch(publisherConfig)) {
+    for (FeedItem item : fetchFeedItems(publisherConfig)) {
       fetchedItems++;
+      metricsService.recordCrawlerFetch(publisherConfig.getName(), "fetched");
       Optional<RawContent> rawContent = createRawContent(publisher, publisherConfig, item);
       if (rawContent.isEmpty()) {
         skippedItems++;
+        metricsService.recordCrawlerFetch(publisherConfig.getName(), "skipped");
         continue;
       }
 
       rawContentRepository.save(rawContent.get());
       storedItems++;
+      metricsService.recordCrawlerFetch(publisherConfig.getName(), "stored");
     }
 
     return new IngestionResult(fetchedItems, storedItems, skippedItems);
+  }
+
+  private List<FeedItem> fetchFeedItems(IngestionProperties.PublisherFeedProperties publisher) {
+    try {
+      return feedClient.fetch(publisher);
+    } catch (RuntimeException ex) {
+      metricsService.recordCrawlerFetch(publisher.getName(), "failed");
+      throw ex;
+    }
   }
 
   private Optional<RawContent> createRawContent(

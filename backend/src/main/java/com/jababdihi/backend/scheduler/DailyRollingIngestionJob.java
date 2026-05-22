@@ -1,5 +1,6 @@
 package com.jababdihi.backend.scheduler;
 
+import com.jababdihi.backend.observability.OperationalMetricsService;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.Job;
 import org.quartz.JobExecutionContext;
@@ -12,10 +13,19 @@ import org.springframework.stereotype.Component;
 @Profile("worker")
 @DisallowConcurrentExecution
 public class DailyRollingIngestionJob implements Job {
+  private static final String JOB_NAME = "daily_rolling_ingestion";
+
   @Autowired private ScheduledTaskEnqueuer scheduledTaskEnqueuer;
+  @Autowired private OperationalMetricsService metricsService;
 
   @Override
   public void execute(JobExecutionContext context) throws JobExecutionException {
-    scheduledTaskEnqueuer.enqueueDailyRollingWindowPlaceholders();
+    try {
+      scheduledTaskEnqueuer.enqueueDailyRollingWindowPlaceholders();
+      metricsService.recordJobSucceeded(JOB_NAME);
+    } catch (RuntimeException ex) {
+      metricsService.recordJobFailed(JOB_NAME);
+      throw new JobExecutionException(ex);
+    }
   }
 }

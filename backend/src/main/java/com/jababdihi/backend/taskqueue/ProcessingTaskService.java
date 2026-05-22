@@ -1,6 +1,8 @@
 package com.jababdihi.backend.taskqueue;
 
+import com.jababdihi.backend.observability.OperationalMetricsService;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -14,12 +16,17 @@ public class ProcessingTaskService {
   private final ProcessingTaskRepository taskRepository;
   private final TaskBackoffPolicy backoffPolicy;
   private final Clock clock;
+  private final OperationalMetricsService metricsService;
 
   ProcessingTaskService(
-      ProcessingTaskRepository taskRepository, TaskBackoffPolicy backoffPolicy, Clock clock) {
+      ProcessingTaskRepository taskRepository,
+      TaskBackoffPolicy backoffPolicy,
+      Clock clock,
+      OperationalMetricsService metricsService) {
     this.taskRepository = taskRepository;
     this.backoffPolicy = backoffPolicy;
     this.clock = clock;
+    this.metricsService = metricsService;
   }
 
   @Transactional
@@ -60,6 +67,7 @@ public class ProcessingTaskService {
   @Transactional
   public void markSucceeded(UUID taskId) {
     ProcessingTask task = getTask(taskId);
+    recordTaskDuration(task);
     task.setStatus(ProcessingTaskStatus.SUCCEEDED);
     task.setLockedAt(null);
     task.setLockedBy(null);
@@ -69,6 +77,7 @@ public class ProcessingTaskService {
   @Transactional
   public ProcessingTask markFailed(UUID taskId, String errorMessage) {
     ProcessingTask task = getTask(taskId);
+    recordTaskDuration(task);
     task.setLastError(errorMessage);
     task.setLockedAt(null);
     task.setLockedBy(null);
@@ -102,5 +111,14 @@ public class ProcessingTaskService {
     return taskRepository
         .findById(taskId)
         .orElseThrow(() -> new IllegalArgumentException("Processing task not found: " + taskId));
+  }
+
+  private void recordTaskDuration(ProcessingTask task) {
+    if (task.getLockedAt() == null) {
+      return;
+    }
+
+    metricsService.recordTaskDuration(
+        task.getTaskType(), Duration.between(task.getLockedAt(), Instant.now(clock)));
   }
 }
