@@ -17,13 +17,13 @@ Always treat `docs/technical-design.md` as the source of truth for architecture,
 
 ## Operating Rules
 
-- Work in small, reviewable pull requests.
+- Push directly to `main`. Do not open pull requests unless explicitly asked.
 - Do not build features that are explicitly out of MVP scope.
 - Do not add public user registration, login, comments, reactions, public search, popularity-based ranking, social media ingestion, coalition drilldown, or map visualization unless the design doc is updated first.
 - Do not expose internal services publicly.
 - Do not commit secrets.
 - Prefer simple, boring, auditable code over clever abstractions.
-- If a task conflicts with `docs/technical-design.md`, stop and explain the conflict in the PR summary.
+- If a task conflicts with `docs/technical-design.md`, note the conflict in the commit message.
 
 ## Repository Structure
 
