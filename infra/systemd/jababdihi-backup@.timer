@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Jababdihi PostgreSQL backup for %i daily
+
+[Timer]
+OnCalendar=03:30
+Persistent=true
+Unit=jababdihi-backup@%i.service
+
+[Install]
+WantedBy=timers.target

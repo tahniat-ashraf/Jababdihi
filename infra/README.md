@@ -2,15 +2,14 @@
 
 Infrastructure workspace for Jababdihi.
 
-## Planned Scope
+## Scope
 
-- Docker Compose service definitions.
-- NGINX configuration.
-- Deployment scripts.
-- Environment templates.
-- GitHub Actions deployment notes.
+- Local, staging, and production Docker Compose service definitions.
+- NGINX routing for the backend API.
+- GitHub Actions backend build, image, migration, and deploy workflows.
 - Vercel frontend deployment notes.
-- Staging and production environment parity documentation.
+- Telegram alert and PostgreSQL backup scripts.
+- Environment templates for local, staging, and production.
 
 ## Deployment Targets
 
@@ -22,6 +21,105 @@ Infrastructure workspace for Jababdihi.
   - PostgreSQL for staging and production.
   - Redis for staging and production.
   - Ollama/private AI runtime.
+
+## Staging And Production Compose
+
+Staging and production use the same topology:
+
+- `nginx`
+- `backend-api`
+- `backend-worker`
+- `postgres`
+- `redis`
+- optional private `ollama`
+
+The environment-specific Compose overlays only change labels and named volumes. Separate databases are configured through each environment's `.env`.
+For MVP, the NGINX container listens on HTTP only; terminate TLS at the VPS provider, a host-level reverse proxy, or Cloudflare before forwarding to `NGINX_HTTP_PORT`.
+
+Validate staging:
+
+```bash
+docker compose --env-file infra/.env.staging.example \
+  -f infra/docker-compose.base.yml \
+  -f infra/docker-compose.staging.yml config
+```
+
+Validate production:
+
+```bash
+docker compose --env-file infra/.env.prod.example \
+  -f infra/docker-compose.base.yml \
+  -f infra/docker-compose.prod.yml config
+```
+
+## CI/CD
+
+Backend CI runs on pull requests and pushes to `main` or `staging`:
+
+- `mvn spotless:check`
+- `mvn test`
+- `mvn package`
+
+Backend deployment workflow:
+
+- Builds and pushes one backend Docker image to GHCR.
+- Runs the same image as `backend-api` and `backend-worker`, with profile differences supplied by Compose.
+- Deploys staging from pull requests from this repository, the `staging` branch, or manual workflow dispatch.
+- Deploys production from `main` or manual workflow dispatch.
+- Runs Flyway automatically before staging deploy.
+- Runs production Flyway migrations in a separate `production-migrations` GitHub Environment, so approval can be required before migrations execute.
+- Deploys production in the `production` GitHub Environment, so final deploy approval can be required separately.
+
+Required GitHub repository environments:
+
+- `staging`
+- `production-migrations`
+- `production`
+
+Required GitHub secrets:
+
+```text
+GHCR_TOKEN
+STAGING_VPS_HOST
+STAGING_VPS_PORT
+STAGING_VPS_USER
+STAGING_VPS_SSH_KEY
+STAGING_DEPLOY_PATH
+PROD_VPS_HOST
+PROD_VPS_PORT
+PROD_VPS_USER
+PROD_VPS_SSH_KEY
+PROD_DEPLOY_PATH
+```
+
+On the VPS, each deploy path should contain a real `.env` copied from:
+
+- `infra/.env.staging.example`
+- `infra/.env.prod.example`
+
+## Frontend Deployment
+
+See [Vercel setup](vercel.md).
+
+Summary:
+
+- Vercel preview deployments run for pull requests.
+- Preview uses the staging API.
+- Vercel production deploys from `main`.
+- Production uses the production API.
+
+## Operations
+
+See [Operations runbook](operations.md).
+
+Included MVP operational pieces:
+
+- Structured JSON backend logs.
+- Actuator health and metrics endpoints.
+- Queue, job, crawler, and task duration metrics.
+- Telegram alert script.
+- Daily encrypted PostgreSQL backups.
+- Weekly VPS snapshot and monthly restore-test documentation.
 
 ## Local Setup
 

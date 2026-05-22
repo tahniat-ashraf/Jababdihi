@@ -1,0 +1,8 @@
+[Unit]
+Description=Jababdihi PostgreSQL backup for %i
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/jababdihi/%i
+EnvironmentFile=/opt/jababdihi/%i/.env
+ExecStart=/opt/jababdihi/%i/scripts/backup-postgres.sh %i
