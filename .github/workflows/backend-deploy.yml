@@ -93,7 +93,7 @@ jobs:
 
       - name: Sync infra files
         run: |
-          rsync -az --delete -e "ssh -p ${{ secrets.STAGING_VPS_PORT || 22 }}" \
+          rsync -az --delete --exclude='.env*' -e "ssh -p ${{ secrets.STAGING_VPS_PORT || 22 }}" \
             infra/ "${{ secrets.STAGING_VPS_USER }}@${{ secrets.STAGING_VPS_HOST }}:${{ secrets.STAGING_DEPLOY_PATH }}/"
 
       - name: Run staging migrations and deploy
@@ -127,7 +127,7 @@ jobs:
 
       - name: Sync infra files
         run: |
-          rsync -az --delete -e "ssh -p ${{ secrets.PROD_VPS_PORT || 22 }}" \
+          rsync -az --delete --exclude='.env*' -e "ssh -p ${{ secrets.PROD_VPS_PORT || 22 }}" \
             infra/ "${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_HOST }}:${{ secrets.PROD_DEPLOY_PATH }}/"
 
       - name: Run production migrations
