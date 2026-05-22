@@ -1,0 +1,22 @@
+name: jababdihi-staging
+
+services:
+  backend-api:
+    labels:
+      com.jababdihi.environment: staging
+    environment:
+      SPRING_PROFILES_ACTIVE: api,staging
+
+  backend-worker:
+    labels:
+      com.jababdihi.environment: staging
+    environment:
+      SPRING_PROFILES_ACTIVE: worker,staging
+
+volumes:
+  postgres-data:
+    name: jababdihi_staging_postgres
+  redis-data:
+    name: jababdihi_staging_redis
+  ollama-data:
+    name: jababdihi_staging_ollama

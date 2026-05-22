@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.jababdihi.backend.observability.OperationalMetricsService;
 import com.jababdihi.backend.source.Publisher;
 import com.jababdihi.backend.source.PublisherRepository;
 import java.time.Clock;
@@ -26,6 +27,7 @@ class AllowlistedPublisherIngestionServiceTests {
   private final PublisherRepository publisherRepository = mock(PublisherRepository.class);
   private final PublisherResolver publisherResolver =
       new PublisherResolver(publisherRepository, CLOCK);
+  private final OperationalMetricsService metricsService = mock(OperationalMetricsService.class);
 
   @Test
   void ingestPublisherStoresAllowlistedRssItemWithCanonicalUrlAndHash() {
@@ -128,7 +130,8 @@ class AllowlistedPublisherIngestionServiceTests {
         new ContentHashGenerator(),
         rawContentRepository,
         publisherResolver,
-        CLOCK);
+        CLOCK,
+        metricsService);
   }
 
   private IngestionProperties.PublisherFeedProperties publisherConfig() {
