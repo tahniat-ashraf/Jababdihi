@@ -4,19 +4,19 @@ set -eu
 ENVIRONMENT="${1:?usage: run-migrations.sh <staging|prod>}"
 
 case "$ENVIRONMENT" in
-  staging) OVERLAY="docker-compose.staging.yml" ;;
-  prod) OVERLAY="docker-compose.prod.yml" ;;
+  staging) OVERLAY="docker-compose.staging.yml" ; ENV_FILE=".env.staging" ;;
+  prod)    OVERLAY="docker-compose.prod.yml"    ; ENV_FILE=".env.prod"    ;;
   *) echo "Unknown environment: $ENVIRONMENT" >&2; exit 2 ;;
 esac
 
 docker compose \
-  --env-file ".env" \
+  --env-file "$ENV_FILE" \
   -f docker-compose.base.yml \
   -f "$OVERLAY" \
   pull backend-api postgres
 
 docker compose \
-  --env-file ".env" \
+  --env-file "$ENV_FILE" \
   -f docker-compose.base.yml \
   -f "$OVERLAY" \
   run --rm --no-deps \
