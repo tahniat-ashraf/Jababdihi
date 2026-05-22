@@ -89,16 +89,16 @@ jobs:
           ssh-private-key: ${{ secrets.STAGING_VPS_SSH_KEY }}
 
       - name: Trust VPS host
-        run: ssh-keyscan -p "${{ secrets.STAGING_VPS_PORT || 22 }}" "${{ secrets.STAGING_VPS_HOST }}" >> ~/.ssh/known_hosts
+        run: ssh-keyscan -p 22 "${{ secrets.STAGING_VPS_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Sync infra files
         run: |
-          rsync -az --delete --exclude='.env*' -e "ssh -p ${{ secrets.STAGING_VPS_PORT || 22 }}" \
+          rsync -az --delete --exclude='.env*' -e "ssh -p 22" \
             infra/ "${{ secrets.STAGING_VPS_USER }}@${{ secrets.STAGING_VPS_HOST }}:${{ secrets.STAGING_DEPLOY_PATH }}/"
 
       - name: Run staging migrations and deploy
         run: |
-          ssh -p "${{ secrets.STAGING_VPS_PORT || 22 }}" "${{ secrets.STAGING_VPS_USER }}@${{ secrets.STAGING_VPS_HOST }}" <<'SSH'
+          ssh -p 22 "${{ secrets.STAGING_VPS_USER }}@${{ secrets.STAGING_VPS_HOST }}" <<'SSH'
           set -eu
           cd "${{ secrets.STAGING_DEPLOY_PATH }}"
           echo "${{ secrets.GHCR_TOKEN || github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
