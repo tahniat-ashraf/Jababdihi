@@ -134,21 +134,18 @@ public class PublicIncidentService {
 
   private Sort sortFor(SortOption sort) {
     return switch (sort) {
-      case NEWEST ->
-          Sort.by(
-              Sort.Order.desc("incidentDate").nullsLast(),
-              Sort.Order.desc("createdAt").nullsLast());
+      case NEWEST -> Sort.by(Sort.Order.desc("incidentDate"), Sort.Order.desc("createdAt"));
       case MOST_CORROBORATED ->
           Sort.by(
-              Sort.Order.desc("confidenceScore").nullsLast(),
+              Sort.Order.desc("confidenceScore"),
               Sort.Order.desc("independentPublisherCount"),
               Sort.Order.desc("sourceCount"),
-              Sort.Order.desc("incidentDate").nullsLast());
+              Sort.Order.desc("incidentDate"));
       case RECOMMENDED ->
           Sort.by(
-              Sort.Order.desc("confidenceScore").nullsLast(),
-              Sort.Order.desc("incidentDate").nullsLast(),
-              Sort.Order.desc("createdAt").nullsLast());
+              Sort.Order.desc("confidenceScore"),
+              Sort.Order.desc("incidentDate"),
+              Sort.Order.desc("createdAt"));
     };
   }
 }

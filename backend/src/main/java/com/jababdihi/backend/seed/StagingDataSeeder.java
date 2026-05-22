@@ -1,6 +1,7 @@
 package com.jababdihi.backend.seed;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -512,7 +513,7 @@ class StagingDataSeeder implements ApplicationRunner {
   private void insertRows(List<SeedRow> rows, List<UUID> pubs) {
     for (SeedRow r : rows) {
       UUID id = UUID.randomUUID();
-      Instant now = Instant.now();
+      Timestamp now = Timestamp.from(Instant.now());
       int pubCount = Math.min(r.numSources(), pubs.size());
 
       jdbc.update(
@@ -562,7 +563,7 @@ class StagingDataSeeder implements ApplicationRunner {
             url,
             url,
             r.enTitle() + " — Source " + (i + 1),
-            now,
+            now, // fetched_at
             "NEWSPAPER",
             now);
       }
@@ -576,7 +577,7 @@ class StagingDataSeeder implements ApplicationRunner {
 
   private UUID insertPublisher(String name, String domain, String homepageUrl) {
     UUID id = UUID.randomUUID();
-    Instant now = Instant.now();
+    Timestamp now = Timestamp.from(Instant.now());
     jdbc.update(
         "INSERT INTO publishers"
             + " (id, name, type, domain, homepage_url, active, created_at, updated_at)"
