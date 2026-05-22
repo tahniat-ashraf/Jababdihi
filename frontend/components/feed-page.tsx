@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { CategorySidebar } from "@/components/category-sidebar";
+import { SlidersHorizontal } from "lucide-react";
+import {
+  CategoryFilterSheet,
+  CategorySidebar
+} from "@/components/category-sidebar";
 import { IncidentCard } from "@/components/incident-card";
 import type {
   ActorRole,
@@ -23,21 +27,35 @@ const pageSize = 20;
 const copy = {
   bn: {
     title: "জবাবদিহি ফিড",
+    eyebrow: "জবাবদিহিতা ফিড · ১৭ ফেব্রু থেকে আজ",
     government: "সরকার",
     opposition: "বিরোধী দল",
     loading: "লোড হচ্ছে",
     loadingMore: "আরও লোড হচ্ছে",
-    empty: "কোনো প্রকাশিত ঘটনা পাওয়া যায়নি",
-    unavailable: "ফিড লোড করা যায়নি"
+    empty: "কোনো প্রকাশিত ঘটনা পাওয়া যায়নি",
+    unavailable: "ফিড লোড করা যায়নি",
+    filters: "ছাঁকুন",
+    sort: "সাজান",
+    recommended: "সুপারিশকৃত",
+    categories: "ধরন",
+    footnote:
+      "ট্র্যাকিং শুরু ১৭ ফেব্রুয়ারি ২০২৬। আস্থা মানে উৎস-সমর্থনের শক্তি — আইনি সত্য নয়।"
   },
   en: {
     title: "Accountability feed",
+    eyebrow: "Accountability feed · 17 Feb → today",
     government: "Government",
     opposition: "Opposition",
     loading: "Loading",
     loadingMore: "Loading more",
     empty: "No published incidents found",
-    unavailable: "Could not load the feed"
+    unavailable: "Could not load the feed",
+    filters: "Filters",
+    sort: "Sort",
+    recommended: "Recommended",
+    categories: "categories",
+    footnote:
+      "Tracking starts 17 February 2026. Confidence reflects source corroboration — not legal truth."
   }
 };
 
@@ -80,6 +98,7 @@ export function FeedPage({ language }: FeedPageProps) {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const selectedCategoryKey = selectedCategories.join(",");
@@ -120,7 +139,11 @@ export function FeedPage({ language }: FeedPageProps) {
   }, [labels.unavailable, language]);
 
   const loadIncidents = useCallback(
-    async (nextPage: number, mode: "replace" | "append", signal?: AbortSignal) => {
+    async (
+      nextPage: number,
+      mode: "replace" | "append",
+      signal?: AbortSignal
+    ) => {
       if (categories.length > 0 && selectedCategories.length === 0) {
         setIncidents([]);
         setPage(1);
@@ -182,7 +205,14 @@ export function FeedPage({ language }: FeedPageProps) {
     });
 
     return () => controller.abort();
-  }, [actorRole, categoriesLoaded, labels.unavailable, language, loadIncidents, selectedCategoryKey]);
+  }, [
+    actorRole,
+    categoriesLoaded,
+    labels.unavailable,
+    language,
+    loadIncidents,
+    selectedCategoryKey
+  ]);
 
   useEffect(() => {
     const target = loadMoreRef.current;
@@ -206,15 +236,22 @@ export function FeedPage({ language }: FeedPageProps) {
 
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasMore, isLoading, isLoadingMore, labels.unavailable, loadIncidents, page]);
+  }, [
+    hasMore,
+    isLoading,
+    isLoadingMore,
+    labels.unavailable,
+    loadIncidents,
+    page
+  ]);
 
-  const actorLabel = useMemo(
-    () => (actorRole === "OPPOSITION" ? labels.opposition : labels.government),
-    [actorRole, labels.government, labels.opposition]
+  const totalLocalized = useMemo(
+    () => totalItems.toLocaleString(language),
+    [language, totalItems]
   );
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[14rem_1fr]">
+    <div className="grid gap-6 pt-5 lg:grid-cols-[15rem_1fr] lg:gap-10">
       <CategorySidebar
         categories={categories}
         language={language}
@@ -223,39 +260,67 @@ export function FeedPage({ language }: FeedPageProps) {
       />
 
       <section className="min-w-0">
-        <div className="mb-5 flex flex-col gap-2 border-b pb-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">
-              {actorLabel}
-            </p>
-            <h1 className="text-2xl font-semibold tracking-tight">
+        {/* Eyebrow + title */}
+        <header className="pb-4">
+          <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            {labels.eyebrow}
+          </p>
+          <div className="mt-2 flex items-start justify-between gap-3">
+            <h1 className="font-serif text-[2rem] font-medium leading-[1.05] tracking-[-0.025em] text-foreground sm:text-[2.5rem]">
               {labels.title}
             </h1>
+            <span className="mt-2 shrink-0 font-mono text-[11px] tracking-tight text-muted-foreground">
+              {totalLocalized}
+            </span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {totalItems.toLocaleString(language)}
-          </p>
+        </header>
+
+        {/* Filter / sort row */}
+        <div className="flex items-center justify-between gap-2 border-y border-border py-2">
+          <button
+            type="button"
+            onClick={() => setFilterSheetOpen(true)}
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-paper px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-foreground/40 lg:hidden"
+          >
+            <SlidersHorizontal className="h-3 w-3" aria-hidden />
+            {selectedCategories.length === categories.length
+              ? `${categories.length} ${labels.categories}`
+              : `${selectedCategories.length} / ${categories.length} ${labels.categories}`}
+          </button>
+          {/* desktop spacer */}
+          <span className="hidden text-[11px] text-muted-foreground lg:inline">
+            {selectedCategories.length === categories.length
+              ? `${categories.length} ${labels.categories}`
+              : `${selectedCategories.length} / ${categories.length} ${labels.categories}`}
+          </span>
+
+          <div className="text-[11px] text-muted-foreground">
+            {labels.sort}:{" "}
+            <span className="font-semibold text-foreground">
+              {labels.recommended}
+            </span>
+          </div>
         </div>
 
         {error ? (
-          <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <div className="mt-4 border-l-2 border-severe bg-severe-soft px-3 py-2 text-sm text-severe">
             {error}
           </div>
         ) : null}
 
         {isLoading ? (
-          <div className="rounded-md border bg-card p-5 text-sm text-muted-foreground">
-            {labels.loading}
+          <div className="py-10 text-center font-serif text-sm italic text-muted-foreground">
+            {labels.loading}…
           </div>
         ) : null}
 
         {!isLoading && !error && incidents.length === 0 ? (
-          <div className="rounded-md border bg-card p-5 text-sm text-muted-foreground">
+          <div className="py-10 text-center font-serif text-sm italic text-muted-foreground">
             {labels.empty}
           </div>
         ) : null}
 
-        <div className="grid gap-2">
+        <div className="flex flex-col">
           {incidents.map((incident) => (
             <IncidentCard
               incident={incident}
@@ -267,11 +332,27 @@ export function FeedPage({ language }: FeedPageProps) {
 
         <div ref={loadMoreRef} className="h-8" />
         {isLoadingMore ? (
-          <div className="py-4 text-center text-sm text-muted-foreground">
-            {labels.loadingMore}
+          <div className="py-4 text-center text-xs italic text-muted-foreground">
+            {labels.loadingMore}…
           </div>
         ) : null}
+
+        {!isLoading && !error && incidents.length > 0 ? (
+          <footer className="mt-10 border-t border-border-soft pt-6 text-center font-serif text-xs italic leading-relaxed text-muted-foreground">
+            {labels.footnote}
+          </footer>
+        ) : null}
       </section>
+
+      <CategoryFilterSheet
+        open={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        categories={categories}
+        language={language}
+        selectedCategories={selectedCategories}
+        onSelectionChange={setSelectedCategories}
+        totalItems={totalItems}
+      />
     </div>
   );
 }

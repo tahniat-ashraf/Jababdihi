@@ -15,6 +15,15 @@ const CY = 50;
 const R = 38;
 const ARC = `M ${CX - R},${CY} A ${R},${R} 0 0,1 ${CX + R},${CY}`;
 
+/**
+ * Refined Dossier half-speedometer.
+ * - Single arc, no segments. Color follows the band:
+ *     0–39 vermilion (severe), 40–69 amber, 70–100 deep green.
+ * - Score rendered in Newsreader serif numerals beneath the arc.
+ * - Pure inherited color for the active arc — themed via `text-*` on parent
+ *   is supported by passing a `currentColor` stroke; we use band-specific
+ *   stops instead so the gauge stays legible regardless of context color.
+ */
 export function ConfidenceGauge({
   score,
   label,
@@ -22,7 +31,6 @@ export function ConfidenceGauge({
   compact = false
 }: ConfidenceGaugeProps) {
   const gId = useId();
-
   const normalizedScore =
     typeof score === "number" ? Math.max(0, Math.min(100, score)) : null;
 
@@ -32,13 +40,22 @@ export function ConfidenceGauge({
   const nx = +(CX + R * Math.cos(angleRad)).toFixed(2);
   const ny = +(CY - R * Math.sin(angleRad)).toFixed(2);
 
-  const svgWidth = compact ? 68 : 104;
+  const activeColor =
+    normalizedScore === null
+      ? "hsl(var(--faint))"
+      : normalizedScore >= 70
+        ? "#15803d"
+        : normalizedScore >= 40
+          ? "#ca8a04"
+          : "hsl(var(--severe))";
+
+  const svgWidth = compact ? 78 : 116;
 
   return (
     <div className="flex flex-col items-center">
       <svg
         aria-label={label ?? fallbackLabel}
-        viewBox="0 0 100 52"
+        viewBox="0 0 100 56"
         width={svgWidth}
       >
         <defs>
@@ -50,40 +67,38 @@ export function ConfidenceGauge({
             y1="0"
             y2="0"
           >
-            <stop offset="0%" stopColor="#b91c1c" />
-            <stop offset="30%" stopColor="#f97316" />
-            <stop offset="55%" stopColor="#eab308" />
-            <stop offset="78%" stopColor="#84cc16" />
-            <stop offset="100%" stopColor="#15803d" />
+            <stop offset="0%" stopColor={activeColor} stopOpacity="0.55" />
+            <stop offset="100%" stopColor={activeColor} />
           </linearGradient>
         </defs>
 
-        {/* background track */}
+        {/* background track — paper rule */}
         <path
           d={ARC}
           fill="none"
-          stroke="#e2e8f0"
+          stroke="hsl(var(--border))"
           strokeLinecap="round"
-          strokeWidth="9"
+          strokeWidth="6"
         />
 
-        {/* gradient track */}
+        {/* active arc */}
         {normalizedScore !== null && (
           <path
             d={ARC}
             fill="none"
             stroke={`url(#${gId})`}
             strokeLinecap="round"
-            strokeWidth="9"
+            strokeWidth="6"
+            strokeDasharray={`${(normalizedScore / 100) * 119.4} 200`}
           />
         )}
 
         {/* needle */}
         {normalizedScore !== null && (
           <line
-            stroke="#0f172a"
+            stroke="hsl(var(--foreground))"
             strokeLinecap="round"
-            strokeWidth="2.2"
+            strokeWidth="1.4"
             x1={CX}
             x2={nx}
             y1={CY}
@@ -91,23 +106,22 @@ export function ConfidenceGauge({
           />
         )}
 
-        {/* pivot dot */}
         {normalizedScore !== null && (
-          <circle cx={CX} cy={CY} fill="#0f172a" r="2.8" />
+          <circle cx={CX} cy={CY} fill="hsl(var(--foreground))" r="2.4" />
         )}
       </svg>
 
-      <div className="-mt-0.5 text-center">
+      <div className="-mt-1 text-center">
         <div
           className={cn(
-            "font-semibold leading-none",
-            compact ? "text-sm" : "text-xl"
+            "font-serif font-medium leading-none tracking-tight text-foreground",
+            compact ? "text-lg" : "text-3xl"
           )}
         >
-          {normalizedScore ?? "--"}
+          {normalizedScore ?? "—"}
         </div>
         <div
-          className="mt-0.5 truncate text-xs text-muted-foreground"
+          className="mt-1 truncate text-[10px] uppercase tracking-[0.12em] text-muted-foreground"
           style={{ maxWidth: svgWidth }}
         >
           {label ?? fallbackLabel}
